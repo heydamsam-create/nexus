@@ -1,0 +1,12 @@
+# Archivos temporales de Visual Studio
+.vs/
+**/bin/
+**/obj/
+
+# Archivos de usuario de Visual Studio
+*.user
+*.suo
+
+# Archivos temporales del sistema
+Thumbs.db
+.DS_Store
