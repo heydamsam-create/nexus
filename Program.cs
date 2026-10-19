@@ -170,6 +170,12 @@ namespace NEXUS
     class Inventario
     {
         private List<Objeto> objetos;
+        ObtenerNombresDeEnergia()
+        {
+            return objetos 
+                .Where(objeto => objeto.nombre)
+                .OrderBy(nombre => nombre)
+                .Tolist
 
         public Inventario()
         {
