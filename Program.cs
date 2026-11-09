@@ -1,5 +1,7 @@
-﻿using System;
+
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace NEXUS
 {
@@ -170,16 +172,19 @@ namespace NEXUS
     class Inventario
     {
         private List<Objeto> objetos;
-        ObtenerNombresDeEnergia()
-        {
-            return objetos 
-                .Where(objeto => objeto.nombre)
-                .OrderBy(nombre => nombre)
-                .Tolist
 
         public Inventario()
         {
             objetos = new List<Objeto>();
+        }
+
+        public List<string> ObtenerNombresDeEnergia()
+        {
+            return objetos
+                .Where(objeto => objeto.Tipo == "Energia")
+                .Select(objeto => objeto.Nombre)
+                .OrderBy(nombre => nombre)
+                .ToList();
         }
 
         // AGREGAR
@@ -417,7 +422,6 @@ namespace NEXUS
         }
 
 
-        
         // INICIAR
         public void Iniciar()
         {
@@ -530,17 +534,9 @@ namespace NEXUS
                 Console.ForegroundColor =
                     ConsoleColor.Cyan;
 
-                Console.WriteLine(
-                    " "
-                );
-
-                Console.WriteLine(
-                    "       NEXUS // SISTEMA"
-                );
-
-                Console.WriteLine(
-                    " "
-                );
+                Console.WriteLine(" ");
+                Console.WriteLine("       NEXUS // SISTEMA");
+                Console.WriteLine(" ");
 
                 Console.ResetColor();
 
@@ -567,9 +563,7 @@ namespace NEXUS
                 Console.WriteLine("5. Ver estado");
                 Console.WriteLine("0. Salir");
 
-                Console.Write(
-                    "\nOpcion: "
-                );
+                Console.Write("\nOpcion: ");
 
                 opcion = Console.ReadLine();
 
@@ -672,9 +666,7 @@ namespace NEXUS
             Console.WriteLine("4. " + extraccion.Nombre);
             Console.WriteLine("0. Regresar");
 
-            Console.Write(
-                "\nSelecciona una zona: "
-            );
+            Console.Write("\nSelecciona una zona: ");
 
             string opcion = Console.ReadLine();
 
@@ -888,25 +880,12 @@ namespace NEXUS
                 "Entidad: " + personaje.Nombre
             );
 
-            Console.WriteLine(
-                "\n1. Atacar"
-            );
+            Console.WriteLine("\n1. Atacar");
+            Console.WriteLine("2. Escapar");
+            Console.WriteLine("3. Utilizar objeto");
+            Console.WriteLine("4. Analizar");
 
-            Console.WriteLine(
-                "2. Escapar"
-            );
-
-            Console.WriteLine(
-                "3. Utilizar objeto"
-            );
-
-            Console.WriteLine(
-                "4. Analizar"
-            );
-
-            Console.Write(
-                "\nAccion: "
-            );
+            Console.Write("\nAccion: ");
 
             string opcion = Console.ReadLine();
 
@@ -1088,7 +1067,6 @@ namespace NEXUS
 
 
         // MISION COMPLETADA
-        
         private void MisionCompletada()
         {
             Console.Clear();
@@ -1096,17 +1074,9 @@ namespace NEXUS
             Console.ForegroundColor =
                 ConsoleColor.Green;
 
-            Console.WriteLine(
-                " "
-            );
-
-            Console.WriteLine(
-                "         MISION COMPLETADA"
-            );
-
-            Console.WriteLine(
-                " "
-            );
+            Console.WriteLine(" ");
+            Console.WriteLine("         MISION COMPLETADA");
+            Console.WriteLine(" ");
 
             Console.ResetColor();
 
@@ -1169,7 +1139,6 @@ namespace NEXUS
 
 
     // PROGRAM
-    
     class Program
     {
         static void Main()
