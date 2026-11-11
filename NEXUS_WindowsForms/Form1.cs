@@ -11,5 +11,32 @@ namespace NEXUS_WindowsForms
         {
             Application.Exit();
         }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
+        }
+
+        private void btnIniciar_Click(object sender, EventArgs e)
+        {
+            FormMision mision = new FormMision();
+            mision.Show();
+            this.Hide();
+        }
+
+        private void btnRegistros_Click(object sender, EventArgs e)
+        {
+            FormRegistros registros = new FormRegistros();
+            registros.Show();
+            this.Hide();
+        }
+
+        private void btnInformacion_Click(object sender, EventArgs e)
+        {
+            FormInformacion informacion = new FormInformacion();
+            informacion.Show();
+            this.Hide();
+        }
     }
-}
+    }
+

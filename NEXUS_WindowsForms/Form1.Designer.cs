@@ -70,6 +70,7 @@
             btnIniciar.TabIndex = 2;
             btnIniciar.Text = "INICIAR MISIÓN";
             btnIniciar.UseVisualStyleBackColor = false;
+            btnIniciar.Click += btnIniciar_Click;
             // 
             // btnRegistros
             // 
@@ -83,6 +84,7 @@
             btnRegistros.TabIndex = 3;
             btnRegistros.Text = "EXPLORAR REGISTROS";
             btnRegistros.UseVisualStyleBackColor = false;
+            btnRegistros.Click += btnRegistros_Click;
             // 
             // btnInformacion
             // 
@@ -96,6 +98,7 @@
             btnInformacion.TabIndex = 4;
             btnInformacion.Text = "INFORMACIÓN";
             btnInformacion.UseVisualStyleBackColor = false;
+            btnInformacion.Click += btnInformacion_Click;
             // 
             // btnSalir
             // 
@@ -128,6 +131,7 @@
             Name = "Form1";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "NEXUS - Sistema de Exploración";
+            Load += Form1_Load;
             ResumeLayout(false);
             PerformLayout();
         }
