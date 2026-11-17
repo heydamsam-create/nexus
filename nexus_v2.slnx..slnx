@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="nexus/nexus1.2mrj.csproj" />
+  <Project Path="nexus/NEXUS_WindowsForms/NEXUS_WindowsForms.csproj" />
+</Solution>
