@@ -1,96 +1,61 @@
-# Análisis técnico: evolución de NEXUS
+# Análisis técnico de NEXUS
 
-## 1. Contexto y evidencia
+## Alcance y proyectos
 
-El repositorio público `heydamsam-create/nexus` contiene `Program.cs`, `nexus1.2mrj.csproj`, `README.md`, `.gitignore` y `docs/`. La implementación consultada usa C# y consola. En `Program.cs` se observan las clases `Personaje`, `Cadete`, `Robot`, `Enemigo`, `Objeto`, `Inventario`, `Zona`, `Mision` y `SistemaNexus`. La misión “La anomalía perdida” contiene cuatro condiciones de progreso. Esto permite que la propuesta gráfica mantenga el modelo conceptual de H3 en lugar de inventar otro juego.
+El repositorio contiene dos proyectos C#:
 
-## 2. Alternativas evaluadas
+- `NEXUS_WindowsForms/NEXUS_WindowsForms.csproj`: aplicación principal de escritorio con `OutputType=WinExe`, `TargetFramework=net10.0-windows`, Windows Forms habilitado, nullable e implicit usings.
+- `nexus1.2mrj.csproj`: prototipo de consola que apunta a `net10.0` y compila el `Program.cs` de la raíz, excluyendo fuentes bajo `NEXUS_WindowsForms`.
 
-| Alternativa | Ventajas | Desventajas | Decisión |
-|---|---|---|---|
-| Mantener consola y mejorar menús | Cambio pequeño; útil para validar reglas | No cumple el objetivo de interfaz gráfica | Mantener solo como referencia de H3 |
-| Windows Forms con lógica en eventos | Fácil de comenzar; todo en un proyecto | Acoplamiento, difícil de probar y mantener | No recomendada como arquitectura final |
-| Windows Forms + dominio/servicios/repositorios | Separación clara; pruebas y evolución más sencillas | Requiere refactor gradual y más archivos | Recomendada |
-| Guardado solo en archivos JSON | Fácil para prototipo local; no requiere servidor SQL | No cumple persistencia SQL Server solicitada y tiene límites para consultas compartidas | Solo alternativa temporal de prueba |
-| SQL Server con consultas parametrizadas | Datos relacionales, restricciones, transacciones y consultas | Requiere instalación/configuración y manejo de errores | Recomendada para persistencia |
-| ORM como Entity Framework Core | Menos SQL repetitivo y mapeo de entidades | Curva de aprendizaje y configuración adicional | Evaluar tras dominar el esquema; ADO.NET es opción didáctica simple |
+`NEXUS.slnx` referencia el proyecto Windows Forms. Existen también `nexus_v2.slnx` y `nexus_v2.slnx..slnx`; no son las soluciones indicadas como entrada principal en este documento. La aplicación gráfica se inicia en `NEXUS_WindowsForms/Program.cs` mediante `Application.Run(new NexusApplicationContext())`.
 
-## 3. Decisiones recomendadas
+## Lenguaje y herramientas
 
-1. **Primero asegurar una versión de referencia:** compilar la versión H3 y registrar errores reales antes de reorganizarla.
-2. **Separar clases:** mover cada clase a un archivo `.cs` sin cambiar las reglas; comprobar que sigue compilando.
-3. **Separar dominio y presentación:** quitar gradualmente `Console.WriteLine` de las clases de dominio y devolver resultados que pueda mostrar la UI.
-4. **Crear Windows Forms:** implementar menú, exploración, misiones e inventario siguiendo `diseno-del-juego.md`.
-5. **Agregar servicios:** `JuegoService` y `PartidaService` coordinan casos de uso, sin convertir los formularios en la lógica del juego.
-6. **Agregar SQL Server:** definir tablas, repositorios y guardado/carga transaccional después de que las reglas estén estables.
-7. **Probar casos principales:** energía mínima/máxima, daño, objeto inválido, consumo de objetos y las cuatro condiciones de misión.
+- C# y .NET 10.
+- Windows Forms para la interfaz gráfica.
+- `System.Text.Json` para el historial local.
+- Visual Studio con Desarrollo de escritorio de .NET, o SDK de .NET 10 para compilar.
+- Git/GitHub para control de versiones y distribución del código.
 
-## 4. Viabilidad y riesgos
+No aparecen referencias de paquetes NuGet, conexión SQL, Entity Framework Core ni servicios de red en el archivo de proyecto Windows Forms revisado.
 
-- **Viabilidad:** la lógica de H3 ya tiene entidades identificables, por lo que es viable conservarla y adaptar su interacción.
-- **Riesgo de refactor:** al estar concentrado el código en `Program.cs`, mover métodos puede introducir errores. Hacer cambios pequeños y compilar tras cada paso.
-- **Riesgo de persistencia:** si el guardado de una partida se hace en varias operaciones sin transacción, puede quedar parcialmente guardada.
-- **Riesgo de interfaz:** si se implementan reglas dentro de botones, habrá duplicación y será más difícil probarlas.
-- **Riesgo de credenciales:** nunca publicar contraseñas o cadenas de conexión con secretos en GitHub.
-- **Riesgo de alcance:** no priorizar animaciones antes de tener una partida que se pueda jugar, guardar y cargar.
+## Funcionalidades verificadas en código
 
-## 5. Plan de implementación sugerido
+- Cuatro formularios: menú (`Form1`), misión (`FormMision`), enciclopedia (`FormInformacion`) e historial (`FormRegistros`).
+- Una instancia de cada formulario gestionada durante la sesión por `NexusApplicationContext`; eventos para navegar, volver y salir.
+- Misión narrativa de varias etapas implementada en `MissionGame`, con opciones, cambios limitados de oxígeno/casco/datos y desenlaces según decisión y umbrales.
+- Resultado con ID GUID, nombre, fecha, desenlace, resumen, puntuación, recursos finales y decisiones.
+- Guardado automático JSON de resultados finalizados en `%LOCALAPPDATA%\NEXUS\mission-history.json`, detección de duplicados por ID y manejo de errores de lectura/escritura.
+- Historial consultable con selección de un registro y visualización de detalles; estado explícito cuando está vacío o no puede leerse.
+- Enciclopedia navegable alimentada por `NexusEncyclopedia`; algunos textos identifican su contenido como marco narrativo propuesto.
+- Recursos gráficos bajo `NEXUS_WindowsForms/Resources/` y recursos integrados desde `Properties/Resources.resx`.
 
-### Etapa 1 — Estabilización
-- Recompilar la versión actual.
-- Registrar errores y comprobar que las funciones de H3 operan.
-- Crear una etiqueta o rama de respaldo antes de refactorizar.
+El código de consola implementa un prototipo previo con clases de personaje, inventario, objetos, zonas y una misión diferente. No es el motor utilizado por `FormMision`.
 
-### Etapa 2 — Ordenamiento del código
-- Separar las clases en archivos.
-- Corregir dependencias y validaciones.
-- Reducir llamadas directas a consola en las clases de dominio.
+## Organización
 
-### Etapa 3 — Interfaz
-- Crear los cuatro formularios prioritarios.
-- Conectar eventos a servicios de aplicación.
-- Verificar navegación y retroalimentación.
+La lógica de navegación está en `NexusApplicationContext.cs`; la mecánica de misión se separa en `Services/MissionGame.cs`; persistencia en `Services/MissionHistoryStore.cs`; el resultado está en `Models/MissionResult.cs`; los textos de enciclopedia están en `Content/NexusEncyclopedia.cs`. Los formularios secundarios crean buena parte de sus controles desde sus archivos `.cs`. Los `.Designer.cs` y `.resx` existentes forman parte del proyecto y no se describen aquí como modificados.
 
-### Etapa 4 — Persistencia
-- Crear esquema SQL versionado.
-- Implementar repositorios y transacciones.
-- Probar guardar, cerrar, volver a abrir y cargar una partida.
+## Limitaciones actuales
 
-### Etapa 5 — Calidad y entrega
-- Ejecutar pruebas manuales y de dominio.
-- Actualizar README y documentación.
-- Crear commits pequeños y descriptivos.
-- Adjuntar evidencias reales en `docs/evidencias/`.
+- Windows Forms requiere Windows para ejecutarse; el destino es `net10.0-windows`.
+- No se guardan partidas en curso y no hay función de continuar/reanudar una misión.
+- El JSON se almacena en el perfil local; no hay sincronización, cuentas ni persistencia compartida.
+- La misión es una secuencia fija de etapas, no un mapa libre, combate, inventario o sistema ampliado de misiones.
+- El prototipo de consola y la aplicación gráfica tienen modelos separados; no comparten una capa de dominio integrada.
+- No se encontró un proyecto de pruebas automatizadas entre los archivos de proyecto del repositorio.
+- Las rutas y compatibilidad de las soluciones antiguas no se documentan como comprobadas; la solución principal examinada es `NEXUS.slnx`.
 
-## 6. Fuentes técnicas consultables
+## Compilación y ejecución
 
-Las siguientes fuentes son documentación oficial o primaria. Deben consultarse para confirmar detalles concretos de la versión de .NET instalada en el equipo.
+Desde la carpeta raíz:
 
-- Microsoft Learn — Windows Forms: https://learn.microsoft.com/dotnet/desktop/winforms/
-- Microsoft Learn — ADO.NET: https://learn.microsoft.com/dotnet/framework/data/adonet/
-- Microsoft Learn — SQL Server y documentación técnica: https://learn.microsoft.com/sql/
-- Microsoft Learn — Entity Framework Core: https://learn.microsoft.com/ef/core/
-- GitHub Docs — Ignorar archivos: https://docs.github.com/get-started/git-basics/ignoring-files
-- GitHub Docs — Buenas prácticas de commits: https://docs.github.com/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits
+```powershell
+dotnet build NEXUS.slnx
+```
 
-## 7. Verificación de información obtenida con IA
+Para ejecutar la interfaz, abrir `NEXUS.slnx` o el `.csproj` Windows Forms en Visual Studio, seleccionar `NEXUS_WindowsForms` como proyecto de inicio y ejecutar en Windows. La presencia de archivos compilados en `bin/` u `obj/` no sustituye una compilación reciente ni confirma que la aplicación se haya probado visualmente.
 
-La IA se utilizó como apoyo para organizar alternativas, proponer un diseño y elaborar un modelo inicial de datos. Sus sugerencias no se consideran evidencia por sí solas.
+## Elementos fuera de alcance
 
-Verificaciones necesarias antes de la implementación:
-- Confirmar en el código local las clases, propiedades y métodos mencionados.
-- Compilar en Visual Studio y usar los errores del compilador como evidencia de estado.
-- Consultar documentación oficial de Microsoft para compatibilidad de Windows Forms, .NET y SQL Server.
-- Probar en ejecución las reglas de energía, inventario y misión.
-- Revisar el diagrama y el esquema con el código real antes de implementarlos.
-- Corregir este documento si una prueba contradice una afirmación.
-
-## 8. Criterios de aceptación
-
-- Los documentos describen clases y zonas de H3, no un juego ajeno.
-- Los cuatro wireframes tienen elementos y navegación explicados.
-- La arquitectura distingue UI, aplicación, dominio y persistencia.
-- El modelo de datos permite guardar y reconstruir una partida.
-- El README indica qué está implementado y qué es una propuesta.
-- El repositorio no contiene binarios temporales ni secretos.
-- Los commits permiten identificar cada grupo de cambios.
+El diseño SQL descrito en documentos previos es una propuesta y no una tecnología conectada. La expansión de la cronología, los antecedentes institucionales de NEXUS y las biografías de la tripulación son temas narrativos abiertos. La aplicación no implementa las funciones del prototipo original como parte de su misión Windows Forms.

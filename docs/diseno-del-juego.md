@@ -1,182 +1,56 @@
-# NEXUS — Diseño del videojuego (propuesta)
+# Diseño del juego NEXUS: misión de Eridani-9
 
-**Versión documental:** 1.0  
-**Base:** NEXUS v1.0 — Exploración de realidades, Hito 3  
-**Plataforma objetivo:** escritorio Windows, C# Windows Forms y SQL Server.
+Este documento separa la misión jugable que existe en Windows Forms del contexto narrativo y de los escenarios del prototipo de consola. Las etapas y efectos de decisión descritos a continuación corresponden a `MissionGame`.
 
-## 1. Visión del juego
+## Universo y premisa
 
-NEXUS es una aventura de exploración de ciencia ficción ambientada en el año 2297. El jugador controla a un cadete enviado a investigar una anomalía que amenaza la estabilidad de una realidad. La versión de H3 ya contempla un cadete con vida, energía, experiencia e inventario; zonas como Bosque de Cristal, Ruinas de IRIS, Zona de Anomalía y Punto de Extracción; personajes como robots y enemigos; y la misión “La anomalía perdida”.
+La expedición está situada en 2297. La nave de exploración NEXUS llega a Eridani-9 después de detectar una señal repetida desde una estructura bajo el cráter de Eos. El cadete debe investigar la señal, recuperar datos y mantener a la tripulación a salvo.
 
-La versión gráfica convertirá las opciones de consola en pantallas visuales claras. El jugador recorrerá zonas, revisará señales, administrará energía y objetos, sobrevivirá a encuentros y completará objetivos antes de volver al punto de extracción. La motivación será descubrir qué ocurrió en IRIS, obtener recursos, mejorar el progreso y completar la misión sin perder al cadete.
+La enciclopedia incluye fichas sobre la nave, la anomalía, los lugares, la cronología y los personajes. Marca explícitamente algunas partes como marco narrativo propuesto. No hay una cronología detallada del universo ni biografías de tripulantes con nombres establecidos en el código actual.
 
-**Principio de diseño:** la interfaz presenta el estado y las opciones, pero las reglas del juego siguen perteneciendo a la lógica de NEXUS, no a los botones del formulario.
+## Flujo jugable implementado
 
-## 2. Ciclo principal de juego
+La misión tiene un briefing inicial y cuatro etapas. Cada etapa permite escoger una o más acciones. La puntuación final se calcula como la suma de oxígeno, integridad del casco y datos recuperados después de limitar cada recurso al rango 0–100.
 
-```mermaid
-flowchart TD
-    A[Menú principal] --> B[Nueva partida o continuar]
-    B --> C[Consultar misión y estado del cadete]
-    C --> D[Elegir zona disponible]
-    D --> E[Explorar y recibir evento]
-    E --> F{¿Requiere decisión o recurso?}
-    F -- Sí --> G[Elegir acción / usar objeto]
-    G --> H[Actualizar vida, energía, inventario y objetivos]
-    F -- No --> H
-    H --> I{¿Objetivos cumplidos?}
-    I -- No --> D
-    I -- Sí --> J[Volver al punto de extracción]
-    J --> K[Validar misión y otorgar progreso]
-    K --> L[Guardar partida]
-    L --> M[Continuar explorando o volver al menú]
-```
+| Etapa | Decisiones | Efecto en recursos y ruta |
+|---|---|---|
+| Briefing | Iniciar exploración | Avanza a aproximación; no cambia recursos. |
+| Aproximación | Escanear desde órbita | +15 datos y establece la ruta de escaneo orbital. |
+| Aproximación | Descender directamente | −10 oxígeno, −10 casco y +8 datos; establece descenso directo. |
+| Contacto | Responder a la señal | +12 datos y la señal queda marcada como confiable para el texto posterior. |
+| Contacto | Seguir el origen | −12 oxígeno, −5 casco y +15 datos. |
+| Exploración | Enviar una sonda | +15 datos; determina la variante narrativa de la siguiente etapa. |
+| Exploración | Desplegar equipo | −20 oxígeno, −5 casco y +24 datos. |
+| Anomalía | Contener el núcleo | −5 oxígeno, −10 casco y +12 datos. |
+| Anomalía | Extraer datos y retirarse | −5 oxígeno y +8 datos. |
+| Anomalía | Neutralizar la fuente | −8 casco y +3 datos. |
 
-## 3. Mecánicas y reglas
+Los indicadores de oxígeno, casco y datos se limitan individualmente entre 0 y 100. Las decisiones previas quedan registradas en una lista de títulos de opción.
 
-### Explorador y estado
-- El personaje controlado es `Cadete`, derivado de `Personaje`.
-- El punto inicial documentado por H3 es 100 de vida, 60 de energía y 0 de experiencia.
-- La energía no puede bajar de 0 ni superar 100 en la implementación consultada.
-- El daño reduce la vida y la limita a un mínimo de 0. En la versión gráfica se mostrará con barras y números.
-- La experiencia se conserva como progreso del jugador. Los niveles y mejoras son una ampliación opcional, no una función que deba darse por implementada.
+## Desenlaces
 
-### Zonas y exploración
-- Las zonas base son Bosque de Cristal, Ruinas de IRIS, Zona de Anomalía y Punto de Extracción.
-- La pantalla de mapa mostrará descripción, estado de descubrimiento y acciones disponibles.
-- En H3, `Zona` representa nombre y descripción; el mapa visual y el desplazamiento entre zonas son una propuesta futura.
-- El recorrido debe respetar el orden lógico de la misión y permitir regresar a extracción.
+El resultado depende de la elección final y, en determinados casos, de los valores finales:
 
-### Misión
-La misión existente “La anomalía perdida” tiene cuatro condiciones: llegar a la anomalía, encontrar el núcleo energético, sobrevivir al encuentro y regresar. La misión se marca completa únicamente cuando se cumplen las cuatro condiciones. La interfaz mostrará cada objetivo como pendiente o completado.
+- **ANOMALÍA CONTENIDA:** elegir contener el núcleo y terminar con casco ≥75, oxígeno ≥60 y datos ≥50.
+- **CONTENCIÓN PARCIAL:** elegir contenerlo sin cumplir todos esos umbrales.
+- **RECOLECCIÓN EXITOSA:** elegir extracción y terminar con datos ≥55.
+- **REPLIEGUE CON DATOS LIMITADOS:** elegir extracción con menos de 55 datos.
+- **AMENAZA NEUTRALIZADA:** elegir neutralizar la fuente.
 
-### Inventario y objetos
-- `Inventario` mantiene una colección de objetos.
-- `Objeto` incluye nombre, tipo y poder.
-- Los tipos previstos en el código incluyen energía, escudo, ataque y analizador.
-- Al usar un objeto, se valida el índice seleccionado; los objetos consumibles se retiran después del uso según la lógica actual.
-- La versión gráfica mostrará nombre, tipo, poder y acción disponible. Debe dar retroalimentación al usar o no poder usar un objeto.
+El resultado incluye resumen, nombre de misión, fecha local, puntuación, recursos finales y decisiones; se emite al contexto de aplicación para su guardado. La opción de repetir reinicia la misión y los recursos en memoria.
 
-### Encuentros
-Los personajes comparten una base `Personaje` y ejecutan su comportamiento mediante `Actuar(Cadete cadete)`. En el código revisado, el enemigo causa daño al cadete y el robot tiene su propia clase. Los encuentros visuales y opciones tácticas ampliadas son futuras mejoras.
+## Contenido de prototipo anterior
 
-## 4. Bocetos de pantallas (wireframes)
+El `Program.cs` de consola conserva una aventura diferente con `Cadete`, vida, energía, experiencia e inventario, además de `Robot`, `Enemigo`, `Zona` y la misión “La anomalía perdida”. Entre sus zonas aparecen Bosque de Cristal, Ruinas de IRIS, Zona de Anomalía y Punto de Extracción. Esas mecánicas no forman parte del flujo actual de `FormMision`; se documentan como referencia del prototipo legado, no como funciones de la aplicación gráfica.
 
-Los bocetos son conceptuales, no interfaces funcionales. Las ubicaciones de los controles podrán ajustarse durante la implementación.
+## Presentación
 
-### Pantalla A — Menú principal
+`FormMision` presenta narrativa, estado, recursos, progreso y botones para las decisiones. La interfaz se construye desde `FormMision.cs`; este documento no afirma cambios en los recursos ni en el diseño de `Form1`. Los textos de la enciclopedia se organizan en `NexusEncyclopedia` y varias entradas señalan qué elementos siguen siendo propuesta narrativa.
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│ NEXUS // EXPLORACIÓN DE REALIDADES                 v1.0           │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│                      N E X U S                                   │
-│              “La anomalía perdida”                               │
-│                                                                  │
-│              [ NUEVA PARTIDA ]                                   │
-│              [ CONTINUAR      ]                                  │
-│              [ DOCUMENTACIÓN  ]                                  │
-│              [ SALIR          ]                                  │
-│                                                                  │
-│ Estado: partida nueva / progreso guardado                        │
-└──────────────────────────────────────────────────────────────────┘
-```
+## Límites narrativos y mecánicos
 
-**Navegación:** Nueva partida crea el estado inicial del cadete; Continuar carga una partida guardada si existe; Documentación abre ayuda; Salir cierra la aplicación con confirmación si hay cambios pendientes.
-
-### Pantalla B — Exploración / mapa
-
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│ NEXUS > MAPA                           Vida ████████░  Energía 60│
-├─────────────────────┬────────────────────────┬───────────────────┤
-│ ZONAS               │ MAPA / ZONA ACTUAL     │ INFORMACIÓN       │
-│ > Bosque de Cristal │   [Bosque]──[Ruinas]    │ Bosque de Cristal │
-│   Ruinas de IRIS    │                \        │ Señales energéticas│
-│   Zona de Anomalía  │             [Anomalía]  │ Riesgo: por evaluar│
-│   Punto de Extracción│               |        │                   │
-│                     │          [Extracción]   │ [Explorar zona]   │
-├─────────────────────┴────────────────────────┴───────────────────┤
-│ [Misión] [Inventario] [Estado] [Volver al menú]                  │
-│ Mensaje: “Se detecta una señal al este.”                         │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-**Navegación:** seleccionar una zona muestra su descripción y las acciones permitidas. Explorar actualiza el estado de la partida mediante la lógica del juego; los controles no deben modificar directamente las tablas SQL.
-
-### Pantalla C — Misiones
-
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│ NEXUS > MISIONES                                                 │
-├──────────────────────────────────────────────────────────────────┤
-│ MISIÓN ACTIVA: La anomalía perdida                               │
-│                                                                  │
-│ [✓] Llegar a la zona de anomalía                                 │
-│ [ ] Encontrar el núcleo energético                               │
-│ [ ] Sobrevivir al encuentro                                      │
-│ [ ] Regresar al punto de extracción                              │
-│                                                                  │
-│ Progreso: 1 de 4 objetivos                                       │
-│                                                                  │
-│ [Ir al mapa] [Guardar partida] [Volver]                          │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-**Navegación:** la pantalla consulta el objeto `Mision`; el jugador puede volver al mapa o guardar. El porcentaje de progreso se calcula a partir de los objetivos reales, no se almacena como un valor independiente si puede derivarse.
-
-### Pantalla D — Explorador e inventario
-
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│ NEXUS > EXPLORADOR / INVENTARIO                                  │
-├──────────────────────────────┬───────────────────────────────────┤
-│ CADETE                       │ INVENTARIO                        │
-│ Vida       ██████████ 100    │ 1. Célula de energía | +25        │
-│ Energía    ██████░░░░ 60     │ 2. Escudo portátil   | +20        │
-│ Experiencia       0 XP       │ 3. Analizador                     │
-│                              │                                   │
-│ [Ver estado completo]        │ Seleccionado: Célula de energía   │
-│                              │ [Usar objeto] [Detalles]          │
-├──────────────────────────────┴───────────────────────────────────┤
-│ Mensaje: “Energía recuperada: +25”                               │
-│ [Mapa] [Misiones] [Volver]                                       │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-**Navegación:** seleccionar un objeto muestra sus detalles; Usar objeto valida que la selección sea válida y actualiza el estado; el resultado se muestra en un mensaje visible.
-
-## 5. Experiencia de usuario
-
-- **Legibilidad:** tipografía clara, contraste suficiente y texto breve; no depender solo del color para mostrar estados.
-- **Jerarquía:** título de pantalla, estado del cadete, contenido principal y acciones secundarias en ese orden.
-- **Consistencia:** mismos nombres, iconos y posiciones para Mapa, Misiones, Inventario, Guardar y Volver.
-- **Navegación:** el usuario debe poder volver al menú sin perder progreso y debe recibir confirmación antes de descartar cambios.
-- **Retroalimentación:** toda acción produce un mensaje de éxito, advertencia o error; por ejemplo, objeto usado, energía insuficiente o zona no disponible.
-- **Accesibilidad básica:** controles con texto, navegación por teclado, tamaños legibles y estados seleccionados visibles.
-- **Prevención de errores:** desactivar acciones imposibles y validar entradas antes de modificar el estado.
-
-## 6. Alcance y restricciones
-
-### Prioridad obligatoria (primera versión gráfica)
-1. Mantener la misión y las cuatro zonas base de H3.
-2. Presentar menú, mapa/lista de zonas, misiones, estado del cadete e inventario.
-3. Separar formularios de las reglas del juego.
-4. Guardar y cargar progreso básico con SQL Server.
-5. Validar uso de objetos, energía y estados de misión.
-6. Mantener el proyecto compilable y documentado en GitHub.
-
-### Opcional
-- Animaciones, efectos de sonido y música.
-- Árbol de habilidades, niveles, más misiones y nuevos mapas.
-- Combate táctico con varias opciones.
-- Perfiles múltiples y estadísticas históricas.
-
-### Restricciones
-- La base obligatoria es el código de H3; no se debe afirmar que las funciones propuestas ya están implementadas.
-- La plataforma prevista es Windows Forms en C# con SQL Server.
-- La persistencia se añadirá después del diseño y la separación de responsabilidades.
-- No guardar contraseñas ni credenciales de conexión en el repositorio.
-- Evitar reemplazar el código actual antes de contar con una versión de referencia que compile.
-- Los bocetos representan una propuesta de interfaz; no son formularios funcionales.
+- La misión actual es una secuencia de etapas fija, no un mapa libre ni un sistema de misiones múltiples.
+- No incluye combate, inventario, niveles, tripulantes con nombre ni gestión de partidas guardadas.
+- El historial almacena solo resultados finalizados; no permite retomar decisiones a mitad de misión.
+- No se ha definido el origen institucional de NEXUS ni el origen o propósito de la anomalía.
+- Los desenlaces son etiquetas narrativas calculadas por reglas del código; no son escenas cinemáticas separadas.

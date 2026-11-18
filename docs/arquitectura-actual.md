@@ -1,54 +1,62 @@
-# Arquitectura actual de NEXUS (H3)
+# Arquitectura actual de NEXUS
 
-## 1. Alcance de la revisión
+## Alcance y solución activa
 
-La revisión se realizó sobre el repositorio público `heydamsam-create/nexus`, rama `main`, en particular `Program.cs` y `nexus1.2mrj.csproj`. En GitHub, `Program.cs` aparece como un archivo grande con aproximadamente 1.183 líneas. La documentación pública del repositorio describe NEXUS v1.0 como una aventura en C# ambientada en 2297.
+La solución principal es `NEXUS.slnx`, que referencia únicamente `NEXUS_WindowsForms/NEXUS_WindowsForms.csproj`. Ese proyecto es una aplicación Windows Forms (`WinExe`) dirigida a `net10.0-windows`. El proyecto de consola `nexus1.2mrj.csproj` y su `Program.cs` siguen en el repositorio, pero quedan fuera de la solución principal.
 
-> Esta descripción refleja lo que puede verificarse en los archivos públicos consultados. Antes de implementar cambios, conviene compilar el proyecto localmente en Visual Studio y comprobar que no haya modificaciones sin subir.
+Esta página describe el código local de Windows Forms. Las clases de consola (`Cadete`, `Zona`, `Mision`, etc.) son parte del prototipo anterior y no son dependencias de la misión gráfica.
 
-## 2. Clases observadas en `Program.cs`
+## Organización
 
-| Clase | Responsabilidad actual observada |
+| Archivo o tipo | Responsabilidad actual |
 |---|---|
-| `Personaje` | Clase abstracta con `Nombre`, `Vida`, `MostrarInformacion()`, `RecibirDanio(int)` y método abstracto `Actuar(Cadete)`. |
-| `Cadete` | Hereda de `Personaje`; mantiene `Energia`, `Experiencia` e `Inventario`; permite gastar/recuperar energía y ganar experiencia. |
-| `Robot` | Hereda de `Personaje`, inicializa vida y redefine información/comportamiento. |
-| `Enemigo` | Hereda de `Personaje`; su acción observada causa daño al cadete. |
-| `Objeto` | Contiene `Nombre`, `Tipo` y `Poder`. |
-| `Inventario` | Administra una lista de objetos; permite agregar, mostrar, usar y comprobar si está vacío. |
-| `Zona` | Contiene nombre y descripción y puede mostrar la información de la zona. |
-| `Mision` | Representa “La anomalía perdida” con cuatro condiciones booleanas: llegar a la anomalía, encontrar núcleo, sobrevivir y regresar. |
-| `SistemaNexus` | Coordina la creación de zonas, el cadete, la misión, el inicio y el menú de consola. |
+| `Program.cs` (WinForms) | Inicializa la configuración de Windows Forms y ejecuta `NexusApplicationContext`. |
+| `NexusApplicationContext` | Crea y conserva una instancia de cada formulario; conecta eventos de navegación y misión; muestra una sola pantalla; gestiona la X, la confirmación de salida y el guardado de resultados. |
+| `Form1` | Menú principal. Emite `MissionRequested`, `InformationRequested`, `RecordsRequested` y `ExitRequested`; conserva su diseño en el archivo Designer y recursos existentes. |
+| `FormMision` | Construye la interfaz de la misión en código, presenta narrativa, opciones, progreso y recursos, y expone `MissionCompleted` y `LastResult`. |
+| `MissionGame` (`Services`) | Mantiene etapa, decisiones, variables de ruta, recursos y condiciones para calcular el desenlace. No presenta controles gráficos. |
+| `MissionOption` (`Services`) | Representa el identificador, título y descripción de una opción de misión. Está declarada junto a `MissionGame`. |
+| `MissionResult` (`Models`) | Modelo serializable del resultado final de una misión. |
+| `MissionHistoryStore` (`Services`) | Carga y guarda la lista de resultados en JSON bajo el perfil local del usuario; maneja fallos y evita guardar dos veces el mismo `Id`. |
+| `FormRegistros` | Carga el historial, presenta lista y detalles y comunica una selección vacía o errores de lectura. Recibe el mismo `MissionHistoryStore` que usa el contexto. |
+| `FormInformacion` | Presenta secciones de enciclopedia y botones para cambiar de sección. |
+| `NexusEncyclopedia` (`Content`) | Contiene títulos, categorías y textos de la enciclopedia; diferencia contenido establecido de ampliación narrativa mediante `IsEstablished`. |
+| `NexusTheme` | Centraliza colores y un helper de estilo compartido por pantallas secundarias. |
 
-## 3. Funcionalidades existentes identificadas
+## Navegación y ciclo de vida
 
-- Experiencia interactiva basada en consola mediante `Console.WriteLine`, `Console.ReadLine` y menús.
-- Cadete con vida inicial 100, energía inicial 60 y experiencia inicial 0.
-- Energía limitada entre 0 y 100 en los métodos revisados.
-- Daño aplicado a personajes y limitado para que la vida no sea negativa.
-- Inventario de objetos con tipo y poder; el uso depende del tipo de objeto.
-- Zonas base: Bosque de Cristal, Ruinas de IRIS, Zona de Anomalía y Punto de Extracción.
-- Misión “La anomalía perdida” con cuatro condiciones necesarias para completar la misión.
-- Uso de herencia y polimorfismo a través de `Personaje`, `Cadete`, `Robot` y `Enemigo`.
+`NexusApplicationContext` crea una única instancia de `Form1`, `FormMision`, `FormInformacion` y `FormRegistros` durante la sesión. No se crean formularios nuevos al navegar:
 
-## 4. Limitaciones arquitectónicas
+```mermaid
+flowchart LR
+    Menu[Form1] -->|MissionRequested| Mision[FormMision]
+    Menu -->|InformationRequested| Info[FormInformacion]
+    Menu -->|RecordsRequested| Registros[FormRegistros]
+    Mision -->|BackRequested| Menu
+    Info -->|BackRequested| Menu
+    Registros -->|BackRequested| Menu
+    Mision -->|MissionCompleted| Store[MissionHistoryStore]
+    Store -->|RefreshHistory al abrir| Registros
+```
 
-1. **Interfaz acoplada a la lógica:** clases de dominio imprimen directamente en consola. Al pasar a Windows Forms, esto mezcla presentación y reglas y dificulta probarlas.
-2. **Concentración en un archivo:** muchas clases y responsabilidades aparecen en `Program.cs`; es más difícil localizar cambios y mantener el código.
-3. **Sin persistencia confirmada:** en los archivos consultados no se identificó una capa de repositorio SQL Server para guardar/cargar partidas.
-4. **Estado en memoria:** objetos de cadete, misión y zonas se crean durante la ejecución; el progreso podría perderse al cerrar la aplicación.
-5. **Modelo de misión específico:** los objetivos son propiedades booleanas fijas; es simple para una misión, pero menos flexible al incorporar muchas misiones.
-6. **Validación y pruebas:** las reglas de negocio deben separarse y probarse sin depender de `Console`.
-7. **LINQ / compilación:** en la vista pública consultada, la sección de `Inventario` alrededor de `ObtenerNombresDeEnergia()` muestra una expresión LINQ aparentemente incompleta o mal formada. Debe verificarse en el archivo local y corregirse solo después de revisar la versión real, porque una página web puede representar mal el formato o el repositorio puede haber cambiado.
+Al mostrar una pantalla, el contexto oculta las demás y activa la elegida. El botón de volver de cada pantalla secundaria regresa al mismo menú. La X de una pantalla secundaria se trata como volver al menú. Al cerrar el menú, se pregunta si se desea salir; si se confirma, el contexto cierra también las instancias secundarias ocultas. El mensaje advierte que una misión sin finalizar no se guarda.
 
-## 5. Relación entre H3 y la evolución
+Al abrir registros, `OpenRecords` solicita una recarga antes de mostrar el formulario, para incluir resultados guardados durante la sesión.
 
-La propuesta no elimina las clases del H3. `Cadete`, `Personaje`, `Objeto`, `Inventario`, `Zona`, `Mision` y `SistemaNexus` constituyen el punto de partida. El primer refactor será extraerlas a archivos y organizar responsabilidades; después se reemplazará la interacción de consola por formularios que llamen a servicios de juego.
+## Misión y datos
 
-## 6. Próxima verificación local
+`FormMision` solicita opciones a `MissionGame` y envía el identificador seleccionado. `MissionGame` aplica los cambios de recursos y avanza la etapa. Al llegar a una decisión final produce un `MissionResult`; `FormMision` asigna `LastResult` y emite `MissionCompleted`. El contexto entrega el resultado al almacén JSON. Si el guardado falla, presenta un mensaje de error.
 
-- Abrir `nexus1.2mrj.csproj` en Visual Studio.
-- Ejecutar **Compilar > Recompilar solución** y guardar el resultado.
-- Revisar advertencias y errores antes de reorganizar clases.
-- Registrar una captura del resultado en `docs/evidencias/`.
-- No declarar que SQL Server o Windows Forms están implementados hasta que existan código y pruebas que lo demuestren.
+`MissionHistoryStore` utiliza `Environment.SpecialFolder.LocalApplicationData` y el archivo `NEXUS/mission-history.json`. `FormRegistros` muestra fecha, desenlace y puntuación en la lista; los detalles incluyen resumen, valores finales y decisiones.
+
+## Interfaz y recursos
+
+Los formularios siguen siendo cuatro clases parciales y conservan sus archivos `Designer.cs` y `.resx`. `Form1` usa recursos visuales del proyecto; hay tres PNG bajo `Resources/` y recursos integrados en `Properties/Resources.resx`. La mayor parte de la interfaz de misión, información e historial se crea desde sus archivos `.cs`; no se usa un servicio externo de datos ni una base SQL.
+
+## Límites actuales
+
+- El contexto de formularios y el estado de una misión viven en memoria durante la ejecución.
+- El historial persiste resultados finalizados; no guarda una misión en curso ni permite reanudarla.
+- El almacenamiento es local al perfil de Windows, no compartido entre usuarios o equipos.
+- El prototipo de consola conserva clases y reglas distintas; no se integra como capa de dominio de la aplicación gráfica.
+- No hay pruebas automatizadas ni proyecto de pruebas en la solución actual.

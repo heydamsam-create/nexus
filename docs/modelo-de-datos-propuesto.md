@@ -1,110 +1,74 @@
-# Modelo de datos propuesto — SQL Server
+# Modelo de resultado e historial JSON
 
-## 1. Propósito
+## Estado
 
-Guardar y recuperar el progreso de NEXUS. Este esquema es una propuesta futura; no implica que SQL Server ya esté conectado al proyecto H3.
+El proyecto Windows Forms ya implementa el guardado local de resultados finalizados mediante JSON. El esquema SQL descrito en versiones anteriores de este documento era una propuesta para partidas completas; no está conectado y no forma parte del modelo actual. Esta página documenta lo que el código implementa hoy.
 
-## 2. Entidades y relaciones
+## `MissionResult`
 
-```mermaid
-erDiagram
-    JUGADOR ||--o{ PARTIDA : posee
-    PARTIDA ||--|| ESTADO_CADETE : contiene
-    PARTIDA ||--o{ PROGRESO_MISION : registra
-    MISION ||--o{ PROGRESO_MISION : tiene
-    PARTIDA ||--o{ INVENTARIO_PARTIDA : contiene
-    OBJETO ||--o{ INVENTARIO_PARTIDA : aparece
-    ZONA ||--o{ DESCUBRIMIENTO_ZONA : registra
-    PARTIDA ||--o{ DESCUBRIMIENTO_ZONA : guarda
+`NEXUS_WindowsForms/Models/MissionResult.cs` declara las propiedades públicas que `System.Text.Json` serializa:
+
+| Propiedad | Tipo | Uso |
+|---|---|---|
+| `Id` | `Guid` | Identificador único del resultado; se inicializa con `Guid.NewGuid()`. El almacén lo usa para evitar duplicados. |
+| `MissionName` | `string` | Nombre de la misión finalizada. |
+| `CompletedAt` | `DateTime` | Fecha y hora local de finalización (`DateTime.Now`). |
+| `Outcome` | `string` | Etiqueta del desenlace. |
+| `Summary` | `string` | Texto que resume el desenlace. |
+| `Score` | `int` | Suma de oxígeno, integridad del casco y datos recuperados al finalizar. |
+| `OxygenRemaining` | `int` | Oxígeno final, limitado entre 0 y 100. |
+| `HullIntegrity` | `int` | Integridad final del casco, limitada entre 0 y 100. |
+| `DataRecovered` | `int` | Datos finales recuperados, limitados entre 0 y 100. |
+| `Decisions` | `List<string>` | Títulos de las opciones elegidas durante la misión. |
+
+Ejemplo representativo de un elemento JSON (los valores dependen de la partida):
+
+```json
+{
+  "Id": "71c8d267-4f44-4a28-8be1-3374d315da40",
+  "MissionName": "Operación Umbral de Eos",
+  "CompletedAt": "2026-11-18T12:00:00",
+  "Outcome": "RECOLECCIÓN EXITOSA",
+  "Summary": "Resumen del desenlace.",
+  "Score": 264,
+  "OxygenRemaining": 83,
+  "HullIntegrity": 95,
+  "DataRecovered": 86,
+  "Decisions": ["INICIAR EXPLORACIÓN", "ESCANEAR DESDE ÓRBITA"]
+}
 ```
 
-- **Jugador:** identidad local o perfil del usuario. Si el juego es individual y no requiere cuentas, puede omitirse inicialmente.
-- **Partida:** un progreso guardado, fecha de creación/actualización, nombre y zona actual.
-- **EstadoCadete:** vida, energía y experiencia actuales de la partida.
-- **Mision:** definición estable de una misión y su descripción.
-- **ProgresoMision:** estado de los objetivos de una misión en una partida.
-- **Objeto:** catálogo de objetos y su tipo/poder.
-- **InventarioPartida:** objetos que tiene una partida y cantidad de cada objeto.
-- **Zona:** catálogo de zonas.
-- **DescubrimientoZona:** estado de descubrimiento o acceso de una zona dentro de una partida.
+El identificador del ejemplo es ilustrativo; en ejecución se genera un GUID nuevo. El archivo contiene una lista JSON de resultados, no un objeto individual.
 
-## 3. Tablas sugeridas
+## Flujo de guardado y consulta
 
-### `Jugador`
-- `JugadorId INT IDENTITY PRIMARY KEY`
-- `Nombre NVARCHAR(80) NOT NULL`
-- `FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()`
+1. `MissionGame` crea un resultado cuando se toma una decisión final.
+2. `FormMision` asigna `LastResult` y emite el evento `MissionCompleted`.
+3. `NexusApplicationContext` entrega el resultado a `MissionHistoryStore.TrySave`.
+4. El almacén lee la lista existente, comprueba si ya existe el mismo `Id`, añade el resultado, crea el directorio si hace falta y escribe JSON indentado en un archivo temporal antes de reemplazar el archivo de destino.
+5. Si la lectura o escritura falla, el almacén devuelve un mensaje de error y el contexto lo presenta en un cuadro de diálogo.
+6. Al abrir el formulario de registros, `FormRegistros` vuelve a cargar el archivo y muestra fecha, desenlace, puntuación y detalles del resultado.
 
-### `Partida`
-- `PartidaId INT IDENTITY PRIMARY KEY`
-- `JugadorId INT NULL` — FK a Jugador si se usa perfil.
-- `Nombre NVARCHAR(100) NOT NULL`
-- `ZonaActualId INT NULL` — FK a Zona.
-- `FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()`
-- `FechaActualizacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()`
-- `VersionEstado ROWVERSION`
+Los errores al cargar se muestran en el formulario. Si el archivo todavía no existe o está vacío, la aplicación muestra el estado de historial vacío. La lectura descarta entradas nulas y, en memoria, elimina IDs repetidos; asigna un ID a resultados antiguos que tengan `Guid.Empty` y ordena por fecha descendente. La escritura se evita para resultados cuyo `Id` ya está guardado.
 
-### `EstadoCadete`
-- `PartidaId INT PRIMARY KEY` — FK a Partida.
-- `NombreCadete NVARCHAR(80) NOT NULL`
-- `Vida INT NOT NULL CHECK (Vida BETWEEN 0 AND 100)`
-- `Energia INT NOT NULL CHECK (Energia BETWEEN 0 AND 100)`
-- `Experiencia INT NOT NULL CHECK (Experiencia >= 0)`
+## Ubicación
 
-### `Mision`
-- `MisionId INT IDENTITY PRIMARY KEY`
-- `Codigo NVARCHAR(40) NOT NULL UNIQUE`
-- `Nombre NVARCHAR(120) NOT NULL`
-- `Descripcion NVARCHAR(500) NULL`
+El almacén usa `Environment.SpecialFolder.LocalApplicationData` y construye la ruta:
 
-### `ProgresoMision`
-- `PartidaId INT NOT NULL` — FK a Partida.
-- `MisionId INT NOT NULL` — FK a Mision.
-- `LlegoAnomalia BIT NOT NULL DEFAULT 0`
-- `NucleoEncontrado BIT NOT NULL DEFAULT 0`
-- `Sobrevivio BIT NOT NULL DEFAULT 0`
-- `Regreso BIT NOT NULL DEFAULT 0`
-- PK compuesta (`PartidaId`, `MisionId`).
+```text
+%LOCALAPPDATA%\NEXUS\mission-history.json
+```
 
-Para la misión actual de H3, los cuatro campos representan exactamente las condiciones de `Mision`. Si el juego incorpora misiones con objetivos variables, conviene normalizar en tablas `ObjetivoMision` y `ProgresoObjetivo` en una etapa posterior.
+La ruta efectiva depende del perfil de Windows con el que se ejecuta la aplicación. Los datos no se sincronizan entre equipos ni se guardan dentro del repositorio.
 
-### `Objeto`
-- `ObjetoId INT IDENTITY PRIMARY KEY`
-- `Codigo NVARCHAR(40) NOT NULL UNIQUE`
-- `Nombre NVARCHAR(100) NOT NULL`
-- `Tipo NVARCHAR(30) NOT NULL`
-- `Poder INT NOT NULL DEFAULT 0`
+## Alcance y limitaciones
 
-### `InventarioPartida`
-- `PartidaId INT NOT NULL` — FK a Partida.
-- `ObjetoId INT NOT NULL` — FK a Objeto.
-- `Cantidad INT NOT NULL CHECK (Cantidad > 0)`
-- PK compuesta (`PartidaId`, `ObjetoId`).
+- Se guardan resultados terminados, no el estado de una misión en curso.
+- No hay perfiles de jugador, identificador de partida, inventario ni progreso reanudable en este JSON.
+- El identificador deduplica una misma instancia de resultado; repetir la misión crea otro resultado con otro `Id`.
+- El bloqueo implementado coordina operaciones sobre la instancia del almacén utilizada por la aplicación; no se documenta como bloqueo entre procesos.
+- SQL Server, ADO.NET y Entity Framework Core no están implementados ni configurados en los proyectos actuales.
 
-### `Zona`
-- `ZonaId INT IDENTITY PRIMARY KEY`
-- `Codigo NVARCHAR(40) NOT NULL UNIQUE`
-- `Nombre NVARCHAR(100) NOT NULL`
-- `Descripcion NVARCHAR(500) NULL`
+## Modelo SQL anterior
 
-### `DescubrimientoZona`
-- `PartidaId INT NOT NULL` — FK a Partida.
-- `ZonaId INT NOT NULL` — FK a Zona.
-- `Descubierta BIT NOT NULL DEFAULT 0`
-- PK compuesta (`PartidaId`, `ZonaId`).
-
-## 4. Guardar y cargar progreso
-
-**Guardar:** abrir una transacción; insertar/actualizar `Partida`, `EstadoCadete`, progreso de misión, inventario y zonas descubiertas; confirmar la transacción solo si todas las operaciones tienen éxito.
-
-**Cargar:** recuperar la partida por `PartidaId`; cargar estado del cadete, misión, inventario y zonas; reconstruir los objetos de dominio y presentar el estado en los formularios.
-
-**Consistencia:** validar vida/energía y relaciones mediante restricciones de base de datos y reglas de dominio. Usar consultas parametrizadas y manejar errores de conexión. Evitar duplicar el progreso calculable, como porcentaje de misión, si puede obtenerse de los objetivos completados.
-
-## 5. Datos iniciales y seguridad
-
-- Registrar las zonas existentes: Bosque de Cristal, Ruinas de IRIS, Zona de Anomalía y Punto de Extracción.
-- Registrar la misión “La anomalía perdida”.
-- Registrar los tipos de objeto compatibles con H3: energía, escudo, ataque y analizador.
-- No incluir contraseñas en scripts, README o código público. Para desarrollo, utilizar configuración local fuera de Git; en un entorno administrado, preferir autenticación segura.
-- Versionar scripts de creación y cambios de esquema para que otra persona pueda reproducir la base.
+El antiguo esquema relacional de Jugador, Partida, EstadoCadete, ProgresoMision, Inventario y zonas puede servir como idea futura para guardar partidas completas. No debe interpretarse como una base creada, un requisito de ejecución o una característica disponible en NEXUS hoy.
