@@ -4,12 +4,12 @@ namespace NEXUS_WindowsForms
 {
     public partial class FormInformacion : Form
     {
-        private static readonly Color BackgroundColor = Color.FromArgb(5, 12, 28);
-        private static readonly Color PanelColor = Color.FromArgb(10, 22, 43);
-        private static readonly Color CardColor = Color.FromArgb(14, 30, 55);
-        private static readonly Color AccentColor = Color.FromArgb(43, 218, 255);
-        private static readonly Color TextColor = Color.FromArgb(225, 239, 250);
-        private static readonly Color MutedTextColor = Color.FromArgb(139, 170, 195);
+        private static readonly Color BackgroundColor = NexusTheme.Background;
+        private static readonly Color PanelColor = NexusTheme.Panel;
+        private static readonly Color CardColor = NexusTheme.Card;
+        private static readonly Color AccentColor = NexusTheme.Accent;
+        private static readonly Color TextColor = NexusTheme.Text;
+        private static readonly Color MutedTextColor = NexusTheme.MutedText;
 
         private readonly List<Button> _sectionButtons = new();
         private Label _categoryLabel = null!;
@@ -95,7 +95,7 @@ namespace NEXUS_WindowsForms
             }, 0, 0);
 
             var navigationArea = new Panel { Dock = DockStyle.Fill };
-            var backButton = CreateButton("VOLVER AL MENÚ");
+            var backButton = NexusTheme.CreateActionButton("VOLVER AL MENÚ");
             backButton.Dock = DockStyle.Right;
             backButton.Width = 170;
             backButton.Click += btnVolver_Click;
@@ -154,7 +154,7 @@ namespace NEXUS_WindowsForms
             {
                 int sectionIndex = index;
                 EncyclopediaSection section = NexusEncyclopedia.Sections[index];
-                var sectionButton = CreateButton(section.ShortTitle);
+                var sectionButton = NexusTheme.CreateActionButton(section.ShortTitle);
                 sectionButton.Height = 48;
                 sectionButton.Width = 280;
                 sectionButton.Margin = new Padding(0, 0, 0, 8);
@@ -285,8 +285,8 @@ namespace NEXUS_WindowsForms
             _bodyTextBox.ScrollToCaret();
             _sourceNoteLabel.Text = section.Note;
             _sourceNoteLabel.ForeColor = section.IsEstablished
-                ? Color.FromArgb(101, 244, 194)
-                : Color.FromArgb(255, 201, 112);
+                ? NexusTheme.Success
+                : NexusTheme.Warning;
             _sectionCounterLabel.Text = $"SECCIÓN {index + 1:00}  /  {NexusEncyclopedia.Sections.Count:00}";
 
             if (_selectedButton is not null)
@@ -303,26 +303,6 @@ namespace NEXUS_WindowsForms
             button.BackColor = selected ? Color.FromArgb(16, 56, 79) : CardColor;
             button.ForeColor = selected ? AccentColor : TextColor;
             button.FlatAppearance.BorderSize = selected ? 2 : 1;
-        }
-
-        private static Button CreateButton(string text)
-        {
-            var button = new Button
-            {
-                Text = text,
-                BackColor = CardColor,
-                ForeColor = TextColor,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
-                UseVisualStyleBackColor = false,
-                Cursor = Cursors.Hand,
-                Padding = new Padding(12, 4, 8, 4)
-            };
-            button.FlatAppearance.BorderColor = AccentColor;
-            button.FlatAppearance.BorderSize = 1;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 51, 78);
-            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(14, 76, 99);
-            return button;
         }
 
         private void btnVolver_Click(object? sender, EventArgs e)

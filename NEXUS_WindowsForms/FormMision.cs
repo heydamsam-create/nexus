@@ -5,12 +5,12 @@ namespace NEXUS_WindowsForms
 {
     public partial class FormMision : Form
     {
-        private static readonly Color BackgroundColor = Color.FromArgb(5, 12, 28);
-        private static readonly Color PanelColor = Color.FromArgb(10, 22, 43);
-        private static readonly Color CardColor = Color.FromArgb(14, 30, 55);
-        private static readonly Color AccentColor = Color.FromArgb(43, 218, 255);
-        private static readonly Color TextColor = Color.FromArgb(225, 239, 250);
-        private static readonly Color MutedTextColor = Color.FromArgb(139, 170, 195);
+        private static readonly Color BackgroundColor = NexusTheme.Background;
+        private static readonly Color PanelColor = NexusTheme.Panel;
+        private static readonly Color CardColor = NexusTheme.Card;
+        private static readonly Color AccentColor = NexusTheme.Accent;
+        private static readonly Color TextColor = NexusTheme.Text;
+        private static readonly Color MutedTextColor = NexusTheme.MutedText;
 
         private readonly MissionGame _game = new();
         private Label _phaseLabel = null!;
@@ -130,7 +130,7 @@ namespace NEXUS_WindowsForms
             header.Controls.Add(titleStack, 0, 0);
 
             var navigationArea = new Panel { Dock = DockStyle.Fill };
-            var backButton = CreateButton("VOLVER AL MENÚ");
+            var backButton = NexusTheme.CreateActionButton("VOLVER AL MENÚ");
             backButton.Dock = DockStyle.Right;
             backButton.Width = 170;
             backButton.Margin = new Padding(0);
@@ -467,7 +467,12 @@ namespace NEXUS_WindowsForms
         {
             IReadOnlyList<MissionOption> options = _game.GetOptions();
             _choicesPanel.SuspendLayout();
-            _choicesPanel.Controls.Clear();
+            while (_choicesPanel.Controls.Count > 0)
+            {
+                Control oldChoice = _choicesPanel.Controls[0];
+                _choicesPanel.Controls.Remove(oldChoice);
+                oldChoice.Dispose();
+            }
             _choicesPanel.ColumnStyles.Clear();
             _choicesPanel.RowStyles.Clear();
             _choicesPanel.ColumnCount = Math.Max(1, options.Count);
@@ -491,7 +496,14 @@ namespace NEXUS_WindowsForms
                 {
                     _choicesPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, width));
                     MissionOption option = options[index];
-                    var choiceButton = CreateButton($"{option.Title}\r\n{option.Description}");
+                    var choiceButton = NexusTheme.CreateActionButton(
+                        $"{option.Title}\r\n{option.Description}",
+                        10F,
+                        new Padding(14, 8, 12, 8));
+                    choiceButton.Dock = DockStyle.Fill;
+                    choiceButton.TextAlign = ContentAlignment.MiddleLeft;
+                    choiceButton.UseCompatibleTextRendering = true;
+                    choiceButton.AutoEllipsis = true;
                     choiceButton.Margin = new Padding(6, 2, 6, 2);
                     choiceButton.Click += (_, _) => SelectOption(option.Id);
                     _choicesPanel.Controls.Add(choiceButton, index, 0);
@@ -499,30 +511,6 @@ namespace NEXUS_WindowsForms
             }
 
             _choicesPanel.ResumeLayout(true);
-        }
-
-        private static Button CreateButton(string text)
-        {
-            var button = new Button
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                BackColor = CardColor,
-                ForeColor = TextColor,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(14, 8, 12, 8),
-                UseVisualStyleBackColor = false,
-                UseCompatibleTextRendering = true,
-                AutoEllipsis = true,
-                Cursor = Cursors.Hand
-            };
-            button.FlatAppearance.BorderColor = AccentColor;
-            button.FlatAppearance.BorderSize = 1;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 51, 78);
-            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(14, 76, 99);
-            return button;
         }
 
         private void SelectOption(string optionId)

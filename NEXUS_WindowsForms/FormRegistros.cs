@@ -5,11 +5,11 @@ namespace NEXUS_WindowsForms
 {
     public partial class FormRegistros : Form
     {
-        private static readonly Color BackgroundColor = Color.FromArgb(5, 12, 28);
-        private static readonly Color PanelColor = Color.FromArgb(10, 22, 43);
-        private static readonly Color AccentColor = Color.FromArgb(43, 218, 255);
-        private static readonly Color TextColor = Color.FromArgb(225, 239, 250);
-        private static readonly Color MutedTextColor = Color.FromArgb(139, 170, 195);
+        private static readonly Color BackgroundColor = NexusTheme.Background;
+        private static readonly Color PanelColor = NexusTheme.Panel;
+        private static readonly Color AccentColor = NexusTheme.Accent;
+        private static readonly Color TextColor = NexusTheme.Text;
+        private static readonly Color MutedTextColor = NexusTheme.MutedText;
 
         private readonly MissionHistoryStore _historyStore;
         private readonly List<MissionResult> _results = new();
@@ -89,7 +89,7 @@ namespace NEXUS_WindowsForms
             }, 0, 0);
 
             var navigationArea = new Panel { Dock = DockStyle.Fill };
-            var backButton = CreateButton("VOLVER AL MENÚ");
+            var backButton = NexusTheme.CreateActionButton("VOLVER AL MENÚ");
             backButton.Dock = DockStyle.Right;
             backButton.Width = 170;
             backButton.Click += btnVolver_Click;
@@ -247,7 +247,7 @@ namespace NEXUS_WindowsForms
                 _results.Clear();
                 _historyContent.Visible = false;
                 _emptyMessageLabel.Text = errorMessage;
-                _emptyMessageLabel.ForeColor = Color.FromArgb(255, 142, 142);
+                _emptyMessageLabel.ForeColor = NexusTheme.Error;
                 _emptyMessageLabel.Visible = true;
                 _emptyMessageLabel.BringToFront();
                 return;
@@ -316,25 +316,6 @@ namespace NEXUS_WindowsForms
                 $"Datos recuperados: {result.DataRecovered}%\r\n" +
                 $"Puntuación: {result.Score}\r\n\r\n" +
                 $"DECISIONES\r\n{decisionsText}";
-        }
-
-        private static Button CreateButton(string text)
-        {
-            var button = new Button
-            {
-                Text = text,
-                BackColor = Color.FromArgb(14, 30, 55),
-                ForeColor = TextColor,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
-                UseVisualStyleBackColor = false,
-                Cursor = Cursors.Hand
-            };
-            button.FlatAppearance.BorderColor = AccentColor;
-            button.FlatAppearance.BorderSize = 1;
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, 51, 78);
-            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(14, 76, 99);
-            return button;
         }
 
         private void btnVolver_Click(object? sender, EventArgs e)

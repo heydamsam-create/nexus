@@ -52,10 +52,10 @@ namespace NEXUS_WindowsForms
             {
                 MessageBox.Show(
                     _mission,
-                    errorMessage,
-                    "NEXUS | Error de guardado",
+                    $"No se pudo guardar el resultado de esta misión.\r\n\r\n{errorMessage}",
+                    "NEXUS | No se guardó la misión",
                     MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                    MessageBoxIcon.Error);
             }
         }
 
@@ -98,6 +98,20 @@ namespace NEXUS_WindowsForms
         {
             if (_isShuttingDown)
             {
+                return;
+            }
+
+            DialogResult confirmation = MessageBox.Show(
+                _menu,
+                "¿Quieres cerrar NEXUS?\r\n\r\nEl progreso de una misión que aún no haya finalizado no se guarda.",
+                "NEXUS | Confirmar salida",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2);
+
+            if (confirmation != DialogResult.Yes)
+            {
+                e.Cancel = true;
                 return;
             }
 

@@ -14,6 +14,15 @@ namespace NEXUS_WindowsForms
             // The menu artwork is the visible button. Keep its transparent hit target
             // aligned with that artwork; the Designer position currently sits above it.
             btnIniciar.Bounds = new Rectangle(91, 305, 548, 87);
+
+            btnIniciar.AccessibleName = "Iniciar misión";
+            btnIniciar.AccessibleDescription = "Comienza la exploración de Eridani-9.";
+            btnRegistros.AccessibleName = "Explorar registros";
+            btnRegistros.AccessibleDescription = "Consulta los resultados de misiones finalizadas.";
+            btnInformacion.AccessibleName = "Información";
+            btnInformacion.AccessibleDescription = "Abre la enciclopedia del universo NEXUS.";
+            btnSalir.AccessibleName = "Salir";
+            btnSalir.AccessibleDescription = "Cierra la aplicación NEXUS.";
         }
 
         private void btnSalir_Click(object sender, EventArgs e)
