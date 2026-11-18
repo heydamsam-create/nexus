@@ -10,6 +10,8 @@ namespace NEXUS_WindowsForms
 {
     public partial class FormInformacion : Form
     {
+        internal event EventHandler? BackRequested;
+
         public FormInformacion()
         {
             InitializeComponent();
@@ -17,9 +19,7 @@ namespace NEXUS_WindowsForms
 
         private void btnVolver_Click(object sender, EventArgs e)
         {
-            Form1 menu = new Form1();
-            menu.Show();
-            this.Close();
+            BackRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 }
