@@ -1,7 +1,11 @@
+using NEXUS_WindowsForms.Models;
+using NEXUS_WindowsForms.Services;
+
 namespace NEXUS_WindowsForms
 {
     internal sealed class NexusApplicationContext : ApplicationContext
     {
+        private readonly MissionHistoryStore _historyStore;
         private readonly Form1 _menu;
         private readonly FormMision _mission;
         private readonly FormInformacion _information;
@@ -10,18 +14,20 @@ namespace NEXUS_WindowsForms
 
         internal NexusApplicationContext()
         {
+            _historyStore = new MissionHistoryStore();
             _menu = new Form1();
             _mission = new FormMision();
             _information = new FormInformacion();
-            _records = new FormRegistros();
+            _records = new FormRegistros(_historyStore);
 
             MainForm = _menu;
 
             _menu.MissionRequested += (_, _) => ShowScreen(_mission);
             _menu.InformationRequested += (_, _) => ShowScreen(_information);
-            _menu.RecordsRequested += (_, _) => ShowScreen(_records);
+            _menu.RecordsRequested += (_, _) => OpenRecords();
             _menu.ExitRequested += (_, _) => _menu.Close();
 
+            _mission.MissionCompleted += SaveMissionResult;
             _mission.BackRequested += (_, _) => ShowScreen(_menu);
             _information.BackRequested += (_, _) => ShowScreen(_menu);
             _records.BackRequested += (_, _) => ShowScreen(_menu);
@@ -32,6 +38,25 @@ namespace NEXUS_WindowsForms
             _menu.FormClosing += OnMenuFormClosing;
 
             _menu.Show();
+        }
+
+        private void OpenRecords()
+        {
+            _records.RefreshHistory();
+            ShowScreen(_records);
+        }
+
+        private void SaveMissionResult(MissionResult result)
+        {
+            if (!_historyStore.TrySave(result, out _, out string errorMessage))
+            {
+                MessageBox.Show(
+                    _mission,
+                    errorMessage,
+                    "NEXUS | Error de guardado",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
 
         private void ShowScreen(Form screenToShow)

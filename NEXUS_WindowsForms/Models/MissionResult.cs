@@ -5,6 +5,7 @@ namespace NEXUS_WindowsForms.Models
     /// </summary>
     public sealed class MissionResult
     {
+        public Guid Id { get; set; } = Guid.NewGuid();
         public string MissionName { get; set; } = string.Empty;
         public DateTime CompletedAt { get; set; }
         public string Outcome { get; set; } = string.Empty;
