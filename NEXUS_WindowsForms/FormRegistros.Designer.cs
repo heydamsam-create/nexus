@@ -57,6 +57,7 @@
             Name = "FormRegistros";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "NEXUS - Registros";
+            Load += FormRegistros_Load;
             ResumeLayout(false);
         }
 

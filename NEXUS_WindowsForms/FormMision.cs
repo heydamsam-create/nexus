@@ -13,11 +13,16 @@ namespace NEXUS_WindowsForms
         private static readonly Color MutedTextColor = NexusTheme.MutedText;
 
         private readonly MissionGame _game = new();
+        private readonly DatabaseService _db = new();
+        private int? _currentExpeditionId;
+        private string _currentCadetName = "Cadete Vance";
+
         private Label _phaseLabel = null!;
         private Label _stepLabel = null!;
         private Label _narrativeLabel = null!;
         private Label _routeValueLabel = null!;
         private Label _statusValueLabel = null!;
+        private Label _saveStatusLabel = null!;
         private TableLayoutPanel _choicesPanel = null!;
         private Panel _missionProgressFill = null!;
         private Panel _missionProgressTrack = null!;
@@ -30,10 +35,6 @@ namespace NEXUS_WindowsForms
 
         internal event EventHandler? BackRequested;
 
-        /// <summary>
-        /// Se dispara al terminar la misión. El resultado queda listo para que
-        /// una futura fase lo guarde en el historial.
-        /// </summary>
         public event Action<MissionResult>? MissionCompleted;
 
         public MissionResult? LastResult { get; private set; }
@@ -43,7 +44,6 @@ namespace NEXUS_WindowsForms
             InitializeComponent();
             ConfigureWindow();
 
-            // La pantalla se compone aquí para mantener intacto el archivo Designer.
             while (Controls.Count > 0)
             {
                 Control existingControl = Controls[0];
@@ -97,8 +97,8 @@ namespace NEXUS_WindowsForms
                 RowCount = 1,
                 Padding = new Padding(14, 8, 12, 8)
             };
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 72));
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52));
 
             var titleStack = new TableLayoutPanel
             {
@@ -114,7 +114,7 @@ namespace NEXUS_WindowsForms
                 Text = "NEXUS  //  EXPLORACIÓN DE LARGO ALCANCE",
                 Dock = DockStyle.Fill,
                 ForeColor = AccentColor,
-                Font = new Font("Segoe UI", 17F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true
             }, 0, 0);
@@ -129,13 +129,35 @@ namespace NEXUS_WindowsForms
             }, 0, 1);
             header.Controls.Add(titleStack, 0, 0);
 
-            var navigationArea = new Panel { Dock = DockStyle.Fill };
+            var navigationArea = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft,
+                WrapContents = false,
+                Padding = new Padding(0, 4, 0, 4)
+            };
+
             var backButton = NexusTheme.CreateActionButton("VOLVER AL MENÚ");
-            backButton.Dock = DockStyle.Right;
-            backButton.Width = 170;
-            backButton.Margin = new Padding(0);
+            backButton.Width = 155;
+            backButton.Height = 42;
+            backButton.Margin = new Padding(6, 0, 0, 0);
             backButton.Click += btnVolver_Click;
+
+            var saveButton = NexusTheme.CreateActionButton("GUARDAR PARTIDA");
+            saveButton.Width = 165;
+            saveButton.Height = 42;
+            saveButton.Margin = new Padding(6, 0, 0, 0);
+            saveButton.Click += (_, _) => SaveCurrentExpedition(showDialog: true);
+
+            var loadButton = NexusTheme.CreateActionButton("CARGAR PARTIDA");
+            loadButton.Width = 160;
+            loadButton.Height = 42;
+            loadButton.Margin = new Padding(6, 0, 0, 0);
+            loadButton.Click += (_, _) => OpenLoadExpeditionDialog();
+
             navigationArea.Controls.Add(backButton);
+            navigationArea.Controls.Add(saveButton);
+            navigationArea.Controls.Add(loadButton);
             header.Controls.Add(navigationArea, 1, 0);
 
             return header;
@@ -178,7 +200,17 @@ namespace NEXUS_WindowsForms
                 Padding = new Padding(0, 10, 8, 0),
                 UseCompatibleTextRendering = true
             };
+            _saveStatusLabel = new Label
+            {
+                Dock = DockStyle.Bottom,
+                Height = 24,
+                ForeColor = Color.FromArgb(101, 244, 194),
+                Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Text = "SQL SERVER: LISTO PARA GUARDAR EXPEDICIÓN"
+            };
             storyPanel.Controls.Add(_narrativeLabel);
+            storyPanel.Controls.Add(_saveStatusLabel);
             storyPanel.Controls.Add(_phaseLabel);
             main.Controls.Add(storyPanel, 0, 0);
             main.Controls.Add(BuildStatusPanel(), 1, 0);
@@ -272,14 +304,7 @@ namespace NEXUS_WindowsForms
                 int width = Math.Max(190, content.ClientSize.Width - 8);
                 foreach (Control control in content.Controls)
                 {
-                    if (control is Panel panel)
-                    {
-                        panel.Width = width;
-                    }
-                    else
-                    {
-                        control.Width = width;
-                    }
+                    control.Width = width;
                 }
             }
 
@@ -518,7 +543,9 @@ namespace NEXUS_WindowsForms
             if (optionId == "RESTART")
             {
                 _game.Reset();
+                _currentExpeditionId = null;
                 LastResult = null;
+                _saveStatusLabel.Text = "SQL SERVER: NUEVA EXPEDICIÓN INICIADA";
                 RenderMission();
                 return;
             }
@@ -527,15 +554,174 @@ namespace NEXUS_WindowsForms
             if (result is not null)
             {
                 LastResult = result;
+                try
+                {
+                    _db.GuardarResultadoMision(result, _currentExpeditionId, _currentCadetName);
+                    _saveStatusLabel.ForeColor = Color.FromArgb(101, 244, 194);
+                    _saveStatusLabel.Text = $"SQL SERVER: MISIÓN COMPLETADA Y REGISTRADA EN BITÁCORA ({DateTime.Now:HH:mm:ss})";
+                }
+                catch (Exception ex)
+                {
+                    _saveStatusLabel.ForeColor = NexusTheme.Error;
+                    _saveStatusLabel.Text = $"ERROR SQL AL GUARDAR RESULTADO: {ex.Message}";
+                }
+
+                _currentExpeditionId = null;
                 MissionCompleted?.Invoke(result);
+            }
+            else
+            {
+                SaveCurrentExpedition(showDialog: false);
             }
 
             RenderMission();
         }
 
+        private void SaveCurrentExpedition(bool showDialog)
+        {
+            if (_game.CurrentStageKey == "Completed")
+            {
+                if (showDialog)
+                {
+                    MessageBox.Show(
+                        "La misión actual ya finalizó y su resultado fue registrado en la Bitácora de SQL Server.",
+                        "NEXUS // Bitácora",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                return;
+            }
+
+            try
+            {
+                string slotName = $"Expedición Eridani-9 ({_game.PhaseName})";
+                _currentExpeditionId = _db.GuardarExpedicionEnCurso(
+                    _currentExpeditionId,
+                    _currentCadetName,
+                    slotName,
+                    _game.CurrentStageKey,
+                    _game.Oxygen,
+                    _game.HullIntegrity,
+                    _game.DataRecovered,
+                    _game.ScannedFromOrbit,
+                    _game.DescendedEarly,
+                    _game.TrustedSignal,
+                    _game.SentProbe,
+                    _game.Decisions);
+
+                _saveStatusLabel.ForeColor = Color.FromArgb(101, 244, 194);
+                _saveStatusLabel.Text = $"SQL SERVER: PARTIDA GUARDADA (ID #{_currentExpeditionId} • {DateTime.Now:HH:mm:ss})";
+
+                if (showDialog)
+                {
+                    MessageBox.Show(
+                        $"Expedición guardada correctamente en SQL Server.\n\nRanura ID: #{_currentExpeditionId}\nEtapa: {_game.PhaseName}\nOxígeno: {_game.Oxygen}% | Casco: {_game.HullIntegrity}% | Datos: {_game.DataRecovered}%",
+                        "NEXUS // Partida Guardada",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                _saveStatusLabel.ForeColor = NexusTheme.Error;
+                _saveStatusLabel.Text = $"ERROR SQL: {ex.Message}";
+                if (showDialog)
+                {
+                    MessageBox.Show($"No se pudo guardar en SQL Server:\n{ex.Message}", "Error SQL", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void OpenLoadExpeditionDialog()
+        {
+            try
+            {
+                List<SavedExpeditionInfo> savedList = _db.ObtenerExpedicionesEnCurso();
+                if (savedList.Count == 0)
+                {
+                    MessageBox.Show(
+                        "No hay expediciones en curso guardadas en SQL Server.\nInicia una misión y avanza una etapa o presiona 'GUARDAR PARTIDA'.",
+                        "NEXUS // Cargar Partida",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
+                }
+
+                using var picker = new Form
+                {
+                    Text = "NEXUS // Seleccionar Expedición Guardada",
+                    Size = new Size(640, 380),
+                    StartPosition = FormStartPosition.CenterParent,
+                    BackColor = BackgroundColor,
+                    ForeColor = TextColor,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    MaximizeBox = false,
+                    MinimizeBox = false
+                };
+
+                var listBox = new ListBox
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = PanelColor,
+                    ForeColor = TextColor,
+                    Font = new Font("Segoe UI", 10F, FontStyle.Regular),
+                    BorderStyle = BorderStyle.FixedSingle
+                };
+
+                foreach (SavedExpeditionInfo exp in savedList)
+                {
+                    listBox.Items.Add($"[ID #{exp.IdExpedicion}] {exp.NombreCadete} — Etapa: {exp.EtapaActual} | O2:{exp.Oxigeno}% Casco:{exp.IntegridadCasco}% Datos:{exp.DatosRecuperados}% ({exp.FechaUltimoGuardado:dd/MM HH:mm})");
+                }
+                listBox.SelectedIndex = 0;
+
+                var confirmBtn = NexusTheme.CreateActionButton("CARGAR EXPEDICIÓN SELECCIONADA");
+                confirmBtn.Dock = DockStyle.Bottom;
+                confirmBtn.Height = 46;
+                confirmBtn.Click += (_, _) =>
+                {
+                    if (listBox.SelectedIndex >= 0)
+                    {
+                        SavedExpeditionInfo chosen = savedList[listBox.SelectedIndex];
+                        _currentExpeditionId = chosen.IdExpedicion;
+                        _currentCadetName = chosen.NombreCadete;
+                        _game.RestoreFromSave(
+                            chosen.EtapaActual,
+                            chosen.Oxigeno,
+                            chosen.IntegridadCasco,
+                            chosen.DatosRecuperados,
+                            chosen.EscaneoOrbital,
+                            chosen.DescensoDirecto,
+                            chosen.SenalConfiable,
+                            chosen.SondaEnviada,
+                            chosen.Decisiones);
+
+                        LastResult = null;
+                        _saveStatusLabel.ForeColor = Color.FromArgb(101, 244, 194);
+                        _saveStatusLabel.Text = $"SQL SERVER: EXPEDICIÓN #{chosen.IdExpedicion} RESTAURADA ({chosen.EtapaActual})";
+                        RenderMission();
+                        picker.DialogResult = DialogResult.OK;
+                        picker.Close();
+                    }
+                };
+
+                picker.Controls.Add(listBox);
+                picker.Controls.Add(confirmBtn);
+                picker.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error al consultar partidas en SQL Server:\n{ex.Message}", "Error SQL", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void btnVolver_Click(object? sender, EventArgs e)
         {
             BackRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void FormMision_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }

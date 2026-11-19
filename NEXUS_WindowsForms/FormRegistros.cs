@@ -11,7 +11,7 @@ namespace NEXUS_WindowsForms
         private static readonly Color TextColor = NexusTheme.Text;
         private static readonly Color MutedTextColor = NexusTheme.MutedText;
 
-        private readonly MissionHistoryStore _historyStore;
+        private readonly DatabaseService _db = new();
         private readonly List<MissionResult> _results = new();
         private DataGridView _historyGrid = null!;
         private TextBox _detailsTextBox = null!;
@@ -20,13 +20,8 @@ namespace NEXUS_WindowsForms
 
         internal event EventHandler? BackRequested;
 
-        public FormRegistros() : this(new MissionHistoryStore())
+        public FormRegistros()
         {
-        }
-
-        internal FormRegistros(MissionHistoryStore historyStore)
-        {
-            _historyStore = historyStore;
             InitializeComponent();
             ConfigureWindow();
 
@@ -41,9 +36,13 @@ namespace NEXUS_WindowsForms
             RefreshHistory();
         }
 
+        internal FormRegistros(MissionHistoryStore _) : this()
+        {
+        }
+
         private void ConfigureWindow()
         {
-            Text = "NEXUS | Historial de misiones";
+            Text = "NEXUS | Historial de misiones (SQL Server)";
             BackColor = BackgroundColor;
             ForeColor = TextColor;
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -80,7 +79,7 @@ namespace NEXUS_WindowsForms
             header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
             header.Controls.Add(new Label
             {
-                Text = "NEXUS  //  REGISTRO DE EXPLORACIONES",
+                Text = "NEXUS  //  REGISTRO DE EXPLORACIONES (SQL)",
                 Dock = DockStyle.Fill,
                 ForeColor = AccentColor,
                 Font = new Font("Segoe UI", 17F, FontStyle.Bold),
@@ -242,47 +241,50 @@ namespace NEXUS_WindowsForms
 
         internal void RefreshHistory()
         {
-            if (!_historyStore.TryLoad(out List<MissionResult> loadedResults, out string errorMessage))
+            try
+            {
+                List<MissionResult> loadedResults = _db.ObtenerHistorialMisiones();
+
+                _results.Clear();
+                _results.AddRange(loadedResults);
+                _historyGrid.Rows.Clear();
+                _detailsTextBox.Clear();
+
+                if (_results.Count == 0)
+                {
+                    _historyContent.Visible = false;
+                    _emptyMessageLabel.Text = "AÚN NO HAY MISIONES FINALIZADAS EN SQL SERVER\r\n\r\nCompleta una misión para que su resultado aparezca aquí.";
+                    _emptyMessageLabel.ForeColor = MutedTextColor;
+                    _emptyMessageLabel.Visible = true;
+                    _emptyMessageLabel.BringToFront();
+                    return;
+                }
+
+                _emptyMessageLabel.Visible = false;
+                _historyContent.Visible = true;
+                foreach (MissionResult result in _results)
+                {
+                    int rowIndex = _historyGrid.Rows.Add(
+                        result.CompletedAt.ToString("dd/MM/yyyy HH:mm"),
+                        result.Outcome,
+                        result.Score.ToString());
+                    _historyGrid.Rows[rowIndex].Tag = result;
+                }
+
+                _historyGrid.ClearSelection();
+                _historyGrid.Rows[0].Selected = true;
+                _historyGrid.CurrentCell = _historyGrid.Rows[0].Cells[0];
+                ShowDetails(_results[0]);
+            }
+            catch (Exception ex)
             {
                 _results.Clear();
                 _historyContent.Visible = false;
-                _emptyMessageLabel.Text = errorMessage;
+                _emptyMessageLabel.Text = $"Error al leer el historial desde SQL Server:\r\n{ex.Message}";
                 _emptyMessageLabel.ForeColor = NexusTheme.Error;
                 _emptyMessageLabel.Visible = true;
                 _emptyMessageLabel.BringToFront();
-                return;
             }
-
-            _results.Clear();
-            _results.AddRange(loadedResults);
-            _historyGrid.Rows.Clear();
-            _detailsTextBox.Clear();
-
-            if (_results.Count == 0)
-            {
-                _historyContent.Visible = false;
-                _emptyMessageLabel.Text = "AÚN NO HAY MISIONES FINALIZADAS\r\n\r\nCompleta una misión para que su resultado aparezca aquí.";
-                _emptyMessageLabel.ForeColor = MutedTextColor;
-                _emptyMessageLabel.Visible = true;
-                _emptyMessageLabel.BringToFront();
-                return;
-            }
-
-            _emptyMessageLabel.Visible = false;
-            _historyContent.Visible = true;
-            foreach (MissionResult result in _results)
-            {
-                int rowIndex = _historyGrid.Rows.Add(
-                    result.CompletedAt.ToString("dd/MM/yyyy HH:mm"),
-                    result.Outcome,
-                    result.Score.ToString());
-                _historyGrid.Rows[rowIndex].Tag = result;
-            }
-
-            _historyGrid.ClearSelection();
-            _historyGrid.Rows[0].Selected = true;
-            _historyGrid.CurrentCell = _historyGrid.Rows[0].Cells[0];
-            ShowDetails(_results[0]);
         }
 
         private void HistoryGrid_SelectionChanged(object? sender, EventArgs e)
@@ -321,6 +323,11 @@ namespace NEXUS_WindowsForms
         private void btnVolver_Click(object? sender, EventArgs e)
         {
             BackRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void FormRegistros_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }

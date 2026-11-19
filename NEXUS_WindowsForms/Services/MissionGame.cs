@@ -235,7 +235,38 @@ namespace NEXUS_WindowsForms.Services
             HullIntegrity = 100;
             DataRecovered = 0;
         }
+        public string CurrentStageKey => _stage.ToString();
+        public bool ScannedFromOrbit => _scannedFromOrbit;
+        public bool DescendedEarly => _descendedEarly;
+        public bool TrustedSignal => _trustedSignal;
+        public bool SentProbe => _sentProbe;
+        public IReadOnlyList<string> Decisions => _decisions.AsReadOnly();
 
+        public void RestoreFromSave(
+            string stageKey,
+            int oxygen,
+            int hullIntegrity,
+            int dataRecovered,
+            bool scannedFromOrbit,
+            bool descendedEarly,
+            bool trustedSignal,
+            bool sentProbe,
+            IEnumerable<string> decisions)
+        {
+            _stage = Enum.TryParse(stageKey, out MissionStage parsedStage)
+                ? parsedStage
+                : MissionStage.Briefing;
+            Oxygen = Math.Clamp(oxygen, 0, 100);
+            HullIntegrity = Math.Clamp(hullIntegrity, 0, 100);
+            DataRecovered = Math.Clamp(dataRecovered, 0, 100);
+            _scannedFromOrbit = scannedFromOrbit;
+            _descendedEarly = descendedEarly;
+            _trustedSignal = trustedSignal;
+            _sentProbe = sentProbe;
+            _decisions.Clear();
+            _decisions.AddRange(decisions);
+            _result = null;
+        }
         private MissionResult CompleteMission(string choiceId)
         {
             if (choiceId == "CONTAIN")

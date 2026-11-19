@@ -114,6 +114,7 @@
             Name = "FormMision";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "NEXUS - Misión";
+            Load += FormMision_Load;
             ResumeLayout(false);
             PerformLayout();
         }
