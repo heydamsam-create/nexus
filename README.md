@@ -94,3 +94,13 @@ Consulta [docs/modelo-de-datos-propuesto.md](docs/modelo-de-datos-propuesto.md) 
 - [Modelo de datos e historial](docs/modelo-de-datos-propuesto.md)
 - [Análisis técnico y limitaciones](docs/analisis-tecnico.md)
 - [Propuesta de arquitectura](docs/arquitectura-propuesta.md) — material de planificación, no descripción de componentes ya implementados.
+## Integración SQL Server — Hito 4 (Operación Memoria)
+
+### Base de Datos (`NexusDB`)
+La persistencia del videojuego se implementó en **Microsoft SQL Server** mediante el script `base de datos/01_CreateDatabase.sql`, que crea las tablas relacionales `Cadetes`, `Expediciones`, `EstadoNave`, `DecisionesExpedicion` y `BitacoraMisiones`.
+
+### Reproducibilidad y Configuración
+1. Abrir **SQL Server Management Studio (SSMS)** y ejecutar completo el script `base de datos/01_CreateDatabase.sql`.
+2. Abrir la solución `NEXO.slnx` en **Visual Studio**.
+3. Verificar la cadena de conexión en `NEXUS_WindowsForms/Data/DatabaseService.cs` apuntando a su instancia local (`Server=.\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;`).
+4. Compilar y ejecutar (`F5`) para registrar/seleccionar cadete, guardar progreso, consultar partidas y verificar la persistencia tras cerrar y volver a abrir la aplicación.
