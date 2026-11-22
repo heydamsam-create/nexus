@@ -34,6 +34,7 @@ namespace NEXUS_WindowsForms.Services
         private bool _descendedEarly;
         private bool _trustedSignal;
         private bool _sentProbe;
+        private string? _narrativeDirective;
         private readonly List<string> _decisions = new();
         private MissionResult? _result;
 
@@ -233,6 +234,7 @@ namespace NEXUS_WindowsForms.Services
             _descendedEarly = false;
             _trustedSignal = false;
             _sentProbe = false;
+            _narrativeDirective = null;
             _decisions.Clear();
             _result = null;
             Oxygen = 100;
@@ -268,6 +270,14 @@ namespace NEXUS_WindowsForms.Services
             }
         }
 
+        public void ApplyNarrativeDecisions(IEnumerable<string> narrativeDecisions)
+        {
+            string? protocol = narrativeDecisions
+                .Where(decision => decision.StartsWith("research_protocol:", StringComparison.OrdinalIgnoreCase))
+                .LastOrDefault();
+            _narrativeDirective = protocol?.Split(':', 2).Last().ToUpperInvariant();
+        }
+
         public void RestoreFromSave(
             string stageKey,
             int oxygen,
@@ -300,6 +310,11 @@ namespace NEXUS_WindowsForms.Services
                 Oxygen -= 5;
                 HullIntegrity -= 10;
                 DataRecovered += 12;
+                if (_narrativeDirective == "STABILIZE")
+                {
+                    HullIntegrity += 5;
+                    DataRecovered += 8;
+                }
             }
             else if (choiceId == "EXTRACT")
             {
@@ -310,6 +325,11 @@ namespace NEXUS_WindowsForms.Services
             {
                 HullIntegrity -= 8;
                 DataRecovered += 3;
+                if (_narrativeDirective == "ISOLATE")
+                {
+                    HullIntegrity += 5;
+                    DataRecovered += 8;
+                }
             }
 
             ClampResources();
@@ -319,7 +339,9 @@ namespace NEXUS_WindowsForms.Services
             if (choiceId == "CONTAIN" && HullIntegrity >= 75 && Oxygen >= 60 && DataRecovered >= 50)
             {
                 outcome = "ANOMALÍA CONTENIDA";
-                summary = "La tripulación estabilizó el núcleo y recuperó datos suficientes para que NEXUS pueda analizar la anomalía durante el viaje de regreso.";
+                summary = _narrativeDirective == "STABILIZE"
+                    ? "La tripulación siguió el protocolo de estabilización preparado en el laboratorio. El núcleo quedó contenido y NEXUS recuperó datos adicionales para estudiarlo durante el regreso."
+                    : "La tripulación estabilizó el núcleo y recuperó datos suficientes para que NEXUS pueda analizar la anomalía durante el viaje de regreso.";
             }
             else if (choiceId == "CONTAIN")
             {
@@ -339,7 +361,9 @@ namespace NEXUS_WindowsForms.Services
             else
             {
                 outcome = "AMENAZA NEUTRALIZADA";
-                summary = "La fuente fue destruida y la señal cesó. NEXUS abandona el cráter con los registros que pudo conservar.";
+                summary = _narrativeDirective == "ISOLATE"
+                    ? "La tripulación aplicó el protocolo de aislamiento preparado en el laboratorio. La fuente fue neutralizada con menos daño y NEXUS conservó datos adicionales."
+                    : "La fuente fue destruida y la señal cesó. NEXUS abandona el cráter con los registros que pudo conservar.";
             }
 
             _stage = MissionStage.Completed;

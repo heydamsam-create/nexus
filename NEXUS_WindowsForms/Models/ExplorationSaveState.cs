@@ -14,6 +14,11 @@ internal sealed class ExplorationSaveState
     public List<string> UsedItems { get; set; } = new();
     public List<string> ReadDocuments { get; set; } = new();
     public List<string> FoundSecrets { get; set; } = new();
+    public List<string> SeenDialogues { get; set; } = new();
+    public List<string> NarrativeDecisions { get; set; } = new();
+    public string? ActiveDialogueId { get; set; }
+    public int ActiveDialogueLineIndex { get; set; }
+    public int ActiveDialogueChoiceIndex { get; set; }
 
     // Se conserva para poder leer y escribir partidas guardadas por la versión anterior.
     public bool SecurityDoorUnlocked { get; set; }

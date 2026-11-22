@@ -814,6 +814,7 @@ namespace NEXUS_WindowsForms
                                 MessageBoxIcon.Warning);
                         }
                         _explorationView.RestoreState(explorationState ?? new ExplorationSaveState());
+                        _game.ApplyNarrativeDecisions(_explorationView.State.NarrativeDecisions);
 
                         LastResult = null;
                         _saveStatusLabel.ForeColor = Color.FromArgb(101, 244, 194);
@@ -851,9 +852,52 @@ namespace NEXUS_WindowsForms
                 return;
             }
 
+            if (_explorationView.DialogueOpen)
+            {
+                if (e.KeyCode is Keys.E or Keys.Enter)
+                {
+                    if (_explorationView.DialogueAtChoices)
+                        _explorationView.ChooseDialogueOption(_explorationView.DialogueChoiceSelection);
+                    else
+                        _explorationView.AdvanceDialogue();
+                }
+                else if (e.KeyCode is Keys.Left or Keys.A or Keys.Up or Keys.W)
+                    _explorationView.MoveDialogueChoice(-1);
+                else if (e.KeyCode is Keys.Right or Keys.D or Keys.Down or Keys.S)
+                    _explorationView.MoveDialogueChoice(1);
+                else if (e.KeyCode is Keys.D1 or Keys.NumPad1)
+                    _explorationView.ChooseDialogueOption(0);
+                else if (e.KeyCode is Keys.D2 or Keys.NumPad2)
+                    _explorationView.ChooseDialogueOption(1);
+
+                _heldKeys.Clear();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (_explorationView.MissionLogOpen)
+            {
+                if (e.KeyCode == Keys.J)
+                    _explorationView.ToggleMissionLog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.I)
             {
                 _explorationView.ToggleInventory();
+                _heldKeys.Clear();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.J)
+            {
+                _explorationView.ToggleMissionLog();
+                _heldKeys.Clear();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 return;
@@ -902,6 +946,13 @@ namespace NEXUS_WindowsForms
                 return;
             }
 
+            if (_explorationView.BlocksMovement)
+            {
+                _heldKeys.Clear();
+                _frameClock.Restart();
+                return;
+            }
+
             float elapsed = (float)_frameClock.Elapsed.TotalSeconds;
             _frameClock.Restart();
             int horizontal = IsKeyHeld(Keys.A, Keys.Left) ? -1 : IsKeyHeld(Keys.D, Keys.Right) ? 1 : 0;
@@ -945,6 +996,7 @@ namespace NEXUS_WindowsForms
         private void ExplorationView_ActionCompleted(object? sender, ExplorationActionEventArgs e)
         {
             _game.RecordExplorationAction(e.Decision, e.OxygenChange, e.HullChange, e.DataChange);
+            _game.ApplyNarrativeDecisions(_explorationView.State.NarrativeDecisions);
             if (e.CompletesExploration)
             {
                 _game.CompleteExploration();

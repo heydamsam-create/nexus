@@ -1,5 +1,6 @@
 using NEXUS_WindowsForms.Models;
 using NEXUS_WindowsForms.Rendering;
+using NEXUS_WindowsForms.Content;
 
 namespace NEXUS_WindowsForms.Controls;
 
@@ -84,6 +85,10 @@ internal sealed class ExplorationView : Control
     private int _data;
     private bool _inventoryOpen;
     private int _inventorySelection;
+    private bool _missionLogOpen;
+    private NarrativeDialogue? _activeDialogue;
+    private int _dialogueLineIndex;
+    private int _dialogueChoiceIndex;
     private string _statusMessage = "Explora la nave. Acércate a un marcador y pulsa E.";
 
     private readonly WorldObject[] _objects =
@@ -117,6 +122,7 @@ internal sealed class ExplorationView : Control
         BuildMap();
         ApplySavedDoorState();
         DiscoverCurrentRoom();
+        RestoreActiveDialogue();
         BackColor = Color.FromArgb(4, 11, 24);
         ForeColor = NexusTheme.Text;
         DoubleBuffered = true;
@@ -131,11 +137,66 @@ internal sealed class ExplorationView : Control
         $"{ObjectiveMark("anomaly_terminal")} Asegurar núcleo";
 
     public bool InventoryOpen => _inventoryOpen;
+    public bool DialogueOpen => _activeDialogue is not null;
+    public bool DialogueAtChoices => _activeDialogue is not null && _dialogueLineIndex >= _activeDialogue.Lines.Count;
+    public int DialogueChoiceSelection => _dialogueChoiceIndex;
+    public bool MissionLogOpen => _missionLogOpen;
+    public bool BlocksMovement => _inventoryOpen || _missionLogOpen || DialogueOpen;
 
     public void ToggleInventory()
     {
+        if (DialogueOpen || _missionLogOpen) return;
         _inventoryOpen = !_inventoryOpen;
         _inventorySelection = Math.Clamp(_inventorySelection, 0, Math.Max(0, GetInventoryItems().Count - 1));
+        Invalidate();
+    }
+
+    public void ToggleMissionLog()
+    {
+        if (DialogueOpen || _inventoryOpen) return;
+        _missionLogOpen = !_missionLogOpen;
+        Invalidate();
+    }
+
+    public void AdvanceDialogue()
+    {
+        if (_activeDialogue is null || _dialogueLineIndex >= _activeDialogue.Lines.Count) return;
+        _dialogueLineIndex++;
+        State.ActiveDialogueLineIndex = _dialogueLineIndex;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        Invalidate();
+    }
+
+    public void MoveDialogueChoice(int direction)
+    {
+        if (_activeDialogue is null || _dialogueLineIndex < _activeDialogue.Lines.Count ||
+            _activeDialogue.Choices.Count == 0) return;
+        _dialogueChoiceIndex = (_dialogueChoiceIndex + direction + _activeDialogue.Choices.Count) %
+            _activeDialogue.Choices.Count;
+        State.ActiveDialogueChoiceIndex = _dialogueChoiceIndex;
+        Invalidate();
+    }
+
+    public void ChooseDialogueOption(int index)
+    {
+        NarrativeDialogue? dialogue = _activeDialogue;
+        if (dialogue is null || _dialogueLineIndex < dialogue.Lines.Count ||
+            index < 0 || index >= dialogue.Choices.Count) return;
+
+        NarrativeChoice choice = dialogue.Choices[index];
+        string savedDecision = $"{dialogue.Id}:{choice.Id}";
+        AddUnique(State.NarrativeDecisions, savedDecision);
+        AddUnique(State.SeenDialogues, dialogue.Id);
+        State.ActiveDialogueId = null;
+        State.ActiveDialogueLineIndex = 0;
+        State.ActiveDialogueChoiceIndex = 0;
+        _activeDialogue = null;
+        _dialogueLineIndex = 0;
+        _dialogueChoiceIndex = 0;
+        _statusMessage = $"DECISIÓN REGISTRADA: {choice.Text}";
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        ActionCompleted?.Invoke(this, new ExplorationActionEventArgs($"{dialogue.Title}: {choice.Text}",
+            completesExploration: dialogue.TriggerId == "anomaly_terminal"));
         Invalidate();
     }
 
@@ -201,10 +262,16 @@ internal sealed class ExplorationView : Control
             default:
                 if (IsDocument(selected.Id))
                 {
+                    bool firstRead = !State.ReadDocuments.Contains(selected.Id, StringComparer.OrdinalIgnoreCase);
                     AddUnique(State.ReadDocuments, selected.Id);
                     CompleteObjective($"read:{selected.Id}");
                     _statusMessage = GetDocumentText(selected.Id);
-                    StateChanged?.Invoke(this, EventArgs.Empty);
+                    if (firstRead)
+                    {
+                        StartDialogueFor(selected.Id);
+                        StateChanged?.Invoke(this, EventArgs.Empty);
+                        ActionCompleted?.Invoke(this, new ExplorationActionEventArgs($"Leer {GetItemName(selected.Id)}"));
+                    }
                 }
                 break;
         }
@@ -215,6 +282,7 @@ internal sealed class ExplorationView : Control
 
     public bool MovePlayer(int horizontal, int vertical, float elapsedSeconds)
     {
+        if (BlocksMovement) return false;
         if (horizontal == 0 && vertical == 0)
         {
             _animationClock += Math.Clamp(elapsedSeconds, 0f, 0.05f);
@@ -260,11 +328,14 @@ internal sealed class ExplorationView : Control
         ApplySavedDoorState();
         DiscoverCurrentRoom();
         _inventorySelection = 0;
+        _missionLogOpen = false;
+        RestoreActiveDialogue();
         Invalidate();
     }
 
     public void Interact()
     {
+        if (BlocksMovement) return;
         _interactionTimer = 0.55f;
         _animationClock += 0.03f;
 
@@ -334,6 +405,7 @@ internal sealed class ExplorationView : Control
             AddUnique(State.ReadDocuments, nearby.Id);
             CompleteObjective($"read:{nearby.Id}");
             _statusMessage = GetDocumentText(nearby.Id);
+            StartDialogueFor(nearby.Id);
             ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(nearby.Title,
                 nearby.OxygenChange, nearby.HullChange, nearby.DataChange));
             StateChanged?.Invoke(this, EventArgs.Empty);
@@ -347,6 +419,7 @@ internal sealed class ExplorationView : Control
             AddUnique(State.CollectedItems, nearby.InventoryId ?? "secret_datacube");
             CompleteObjective("secret_archive");
             _statusMessage = "ARCHIVO SECRETO RECUPERADO: se añadió un cubo de datos al inventario.";
+            StartDialogueFor(nearby.Id);
             ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(nearby.Title,
                 nearby.OxygenChange, nearby.HullChange, nearby.DataChange));
             StateChanged?.Invoke(this, EventArgs.Empty);
@@ -379,12 +452,14 @@ internal sealed class ExplorationView : Control
             _ => "Interacción completada."
         };
 
+        StartDialogueFor(nearby.Id);
+
         ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(
             nearby.Title,
             nearby.OxygenChange,
             nearby.HullChange,
             nearby.DataChange,
-            nearby.Id == "anomaly_terminal"));
+            nearby.Id == "anomaly_terminal" && !DialogueOpen));
         StateChanged?.Invoke(this, EventArgs.Empty);
         Invalidate();
     }
@@ -436,6 +511,56 @@ internal sealed class ExplorationView : Control
 
         graphics.ResetTransform();
         DrawOverlay(graphics);
+    }
+
+    protected override void OnMouseClick(MouseEventArgs e)
+    {
+        base.OnMouseClick(e);
+        Focus();
+        if (_activeDialogue is null || _dialogueLineIndex < _activeDialogue.Lines.Count) return;
+
+        Rectangle panel = GetDialoguePanelBounds();
+        int optionY = panel.Bottom - 82;
+        for (int index = 0; index < _activeDialogue.Choices.Count; index++)
+        {
+            Rectangle optionBounds = new(panel.X + 24, optionY + index * 36, panel.Width - 48, 30);
+            if (optionBounds.Contains(e.Location))
+            {
+                ChooseDialogueOption(index);
+                return;
+            }
+        }
+    }
+
+    private void StartDialogueFor(string triggerId)
+    {
+        if (_activeDialogue is not null) return;
+        NarrativeDialogue? dialogue = NexusNarrative.ForTrigger(triggerId);
+        if (dialogue is null || State.SeenDialogues.Contains(dialogue.Id, StringComparer.OrdinalIgnoreCase)) return;
+
+        _activeDialogue = dialogue;
+        _dialogueLineIndex = 0;
+        _dialogueChoiceIndex = 0;
+        State.ActiveDialogueId = dialogue.Id;
+        State.ActiveDialogueLineIndex = 0;
+        State.ActiveDialogueChoiceIndex = 0;
+    }
+
+    private void RestoreActiveDialogue()
+    {
+        _activeDialogue = string.IsNullOrWhiteSpace(State.ActiveDialogueId)
+            ? null
+            : NexusNarrative.Find(State.ActiveDialogueId);
+        if (_activeDialogue is null || State.SeenDialogues.Contains(_activeDialogue.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            _activeDialogue = null;
+            State.ActiveDialogueId = null;
+            return;
+        }
+
+        _dialogueLineIndex = Math.Clamp(State.ActiveDialogueLineIndex, 0, _activeDialogue.Lines.Count);
+        _dialogueChoiceIndex = Math.Clamp(State.ActiveDialogueChoiceIndex, 0,
+            Math.Max(0, _activeDialogue.Choices.Count - 1));
     }
 
     private void BuildMap()
@@ -825,12 +950,91 @@ internal sealed class ExplorationView : Control
         Rectangle help = new(12, Math.Max(12, ClientSize.Height - 35), ClientSize.Width - 24, 23);
         graphics.FillRectangle(panelBrush, help);
         graphics.DrawRectangle(borderPen, help);
-        graphics.DrawString("W A S D / FLECHAS: MOVER     E: INTERACTUAR     " + prompt,
+        graphics.DrawString("W A S D / FLECHAS: MOVER     E: INTERACTUAR     J: OBJETIVOS     " + prompt,
             textFont, textBrush, help.X + 8, help.Y + 4);
 
         graphics.DrawString("I: INVENTARIO", textFont, titleBrush, help.Right - 95, help.Y + 4);
         if (_inventoryOpen)
             DrawInventory(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
+        else if (_missionLogOpen)
+            DrawMissionLog(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
+        if (_activeDialogue is not null)
+            DrawDialogue(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
+    }
+
+    private void DrawDialogue(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
+        Font textFont, Brush titleBrush, Brush textBrush)
+    {
+        if (_activeDialogue is null) return;
+        Rectangle panel = GetDialoguePanelBounds();
+        graphics.FillRectangle(panelBrush, panel);
+        graphics.DrawRectangle(borderPen, panel);
+        graphics.DrawString(_activeDialogue.Title, titleFont, titleBrush, panel.X + 18, panel.Y + 12);
+        if (_dialogueLineIndex < _activeDialogue.Lines.Count)
+        {
+            NarrativeLine line = _activeDialogue.Lines[_dialogueLineIndex];
+            using var speakerFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+            graphics.DrawString(line.Speaker, speakerFont, titleBrush, panel.X + 18, panel.Y + 42);
+            var textBounds = new RectangleF(panel.X + 18, panel.Y + 66, panel.Width - 36, 92);
+            graphics.DrawString(line.Text, textFont, textBrush, textBounds);
+            graphics.DrawString("E / ENTER: CONTINUAR", textFont, titleBrush, panel.X + 18, panel.Bottom - 30);
+            return;
+        }
+
+        graphics.DrawString("ELIGE TU RESPUESTA", textFont, titleBrush, panel.X + 18, panel.Y + 42);
+        int optionY = panel.Bottom - 82;
+        for (int index = 0; index < _activeDialogue.Choices.Count; index++)
+        {
+            Rectangle optionBounds = new(panel.X + 24, optionY + index * 36, panel.Width - 48, 30);
+            using var optionBrush = new SolidBrush(index == _dialogueChoiceIndex
+                ? Color.FromArgb(70, 32, 145, 173)
+                : Color.FromArgb(42, 22, 55, 76));
+            graphics.FillRectangle(optionBrush, optionBounds);
+            graphics.DrawRectangle(borderPen, optionBounds);
+            graphics.DrawString($"[{index + 1}]  {_activeDialogue.Choices[index].Text}", textFont,
+                textBrush, optionBounds.X + 8, optionBounds.Y + 7);
+        }
+        graphics.DrawString("A / D, ← / →: SELECCIONAR   E / ENTER: CONFIRMAR   1 / 2", textFont, titleBrush,
+            panel.X + 18, panel.Y + 68);
+    }
+
+    private void DrawMissionLog(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
+        Font textFont, Brush titleBrush, Brush textBrush)
+    {
+        int width = Math.Min(650, ClientSize.Width - 32);
+        int height = Math.Min(440, ClientSize.Height - 70);
+        var panel = new Rectangle((ClientSize.Width - width) / 2, (ClientSize.Height - height) / 2,
+            width, height);
+        graphics.FillRectangle(panelBrush, panel);
+        graphics.DrawRectangle(borderPen, panel);
+        graphics.DrawString("REGISTRO DE MISIÓN // J PARA CERRAR", titleFont, titleBrush,
+            panel.X + 18, panel.Y + 14);
+        IReadOnlyList<NarrativeObjective> objectives = NexusNarrative.GetObjectives(State);
+        int y = panel.Y + 48;
+        foreach (NarrativeObjective objective in objectives)
+        {
+            string marker = objective.IsComplete ? "[✓]" : "[ ]";
+            Color color = objective.IsComplete ? Color.FromArgb(103, 228, 177) : NexusTheme.Text;
+            using var objectiveBrush = new SolidBrush(color);
+            string category = objective.IsSecondary ? "SECUNDARIA" : "PRINCIPAL";
+            graphics.DrawString($"{marker} {category} // {objective.Title}", textFont, objectiveBrush,
+                panel.X + 18, y);
+            using var roomFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+            graphics.DrawString(objective.Room, roomFont, textBrush, panel.Right - 180, y + 1);
+            y += 28;
+        }
+        graphics.DrawString("Los documentos y las decisiones quedan guardados con la expedición.",
+            textFont, titleBrush, panel.X + 18, panel.Bottom - 30);
+    }
+
+    private Rectangle GetDialoguePanelBounds()
+    {
+        int width = Math.Max(280, Math.Min(720, ClientSize.Width - 32));
+        const int height = 236;
+        int safeWidth = Math.Min(width, Math.Max(1, ClientSize.Width - 16));
+        int x = (ClientSize.Width - safeWidth) / 2;
+        int y = Math.Max(16, ClientSize.Height - height - 48);
+        return new Rectangle(x, y, safeWidth, Math.Min(height, Math.Max(120, ClientSize.Height - y - 42)));
     }
 
     private void DrawGameHud(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
@@ -1196,6 +1400,8 @@ internal sealed class ExplorationView : Control
         State.UsedItems ??= new List<string>();
         State.ReadDocuments ??= new List<string>();
         State.FoundSecrets ??= new List<string>();
+        State.SeenDialogues ??= new List<string>();
+        State.NarrativeDecisions ??= new List<string>();
 
         // Translate names and the former security-door flag from earlier saved JSON snapshots.
         var legacyRooms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -1245,6 +1451,9 @@ internal sealed class ExplorationView : Control
         {
             State.PlayerX -= 2 * TileSize;
         }
+
+        State.ActiveDialogueLineIndex = Math.Max(0, State.ActiveDialogueLineIndex);
+        State.ActiveDialogueChoiceIndex = Math.Max(0, State.ActiveDialogueChoiceIndex);
     }
 
     private static void AddUnique(List<string> values, string value)
