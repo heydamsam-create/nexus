@@ -845,6 +845,30 @@ namespace NEXUS_WindowsForms
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
 
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (_game.CurrentStageKey == "Exploration" && _explorationView.ChallengeOpen)
+            {
+                int challengeKey = (keyData & Keys.KeyCode) switch
+                {
+                    Keys.D1 or Keys.NumPad1 => 1,
+                    Keys.D2 or Keys.NumPad2 => 2,
+                    Keys.D3 or Keys.NumPad3 => 3,
+                    Keys.D4 or Keys.NumPad4 => 4,
+                    _ => 0
+                };
+
+                if (challengeKey != 0)
+                {
+                    _heldKeys.Clear();
+                    _explorationView.SubmitChallengeKey(challengeKey);
+                    return true;
+                }
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         private void FormMision_KeyDown(object? sender, KeyEventArgs e)
         {
             if (_game.CurrentStageKey != "Exploration")
@@ -869,6 +893,19 @@ namespace NEXUS_WindowsForms
                     _explorationView.ChooseDialogueOption(0);
                 else if (e.KeyCode is Keys.D2 or Keys.NumPad2)
                     _explorationView.ChooseDialogueOption(1);
+
+                _heldKeys.Clear();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (_explorationView.ChallengeOpen)
+            {
+                if (e.KeyCode is Keys.D1 or Keys.NumPad1) _explorationView.SubmitChallengeKey(1);
+                else if (e.KeyCode is Keys.D2 or Keys.NumPad2) _explorationView.SubmitChallengeKey(2);
+                else if (e.KeyCode is Keys.D3 or Keys.NumPad3) _explorationView.SubmitChallengeKey(3);
+                else if (e.KeyCode is Keys.D4 or Keys.NumPad4) _explorationView.SubmitChallengeKey(4);
 
                 _heldKeys.Clear();
                 e.Handled = true;
@@ -946,21 +983,28 @@ namespace NEXUS_WindowsForms
                 return;
             }
 
-            if (_explorationView.BlocksMovement)
+            float elapsed = (float)_frameClock.Elapsed.TotalSeconds;
+            _frameClock.Restart();
+            if (_explorationView.ChallengeOpen)
             {
                 _heldKeys.Clear();
-                _frameClock.Restart();
+                _explorationView.AdvanceWorld(elapsed);
                 return;
             }
 
-            float elapsed = (float)_frameClock.Elapsed.TotalSeconds;
-            _frameClock.Restart();
+            if (_explorationView.BlocksMovement)
+            {
+                _heldKeys.Clear();
+                return;
+            }
+
             int horizontal = IsKeyHeld(Keys.A, Keys.Left) ? -1 : IsKeyHeld(Keys.D, Keys.Right) ? 1 : 0;
             int vertical = IsKeyHeld(Keys.W, Keys.Up) ? -1 : IsKeyHeld(Keys.S, Keys.Down) ? 1 : 0;
             if (_explorationView.MovePlayer(horizontal, vertical, elapsed))
             {
                 ScheduleAutoSave();
             }
+            _explorationView.AdvanceWorld(elapsed);
         }
 
         private bool IsKeyHeld(Keys first, Keys alternate) =>

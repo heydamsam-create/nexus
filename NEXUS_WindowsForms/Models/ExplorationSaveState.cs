@@ -16,6 +16,13 @@ internal sealed class ExplorationSaveState
     public List<string> FoundSecrets { get; set; } = new();
     public List<string> SeenDialogues { get; set; } = new();
     public List<string> NarrativeDecisions { get; set; } = new();
+    public List<string> TriggeredWorldEvents { get; set; } = new();
+    public List<string> ActiveWorldEvents { get; set; } = new();
+    public List<string> CompletedWorldEvents { get; set; } = new();
+    public List<string> CompletedChallenges { get; set; } = new();
+    public Dictionary<string, float> WorldEventClocks { get; set; } = new();
+    public string? ActiveChallengeId { get; set; }
+    public int ActiveChallengeStep { get; set; }
     public string? ActiveDialogueId { get; set; }
     public int ActiveDialogueLineIndex { get; set; }
     public int ActiveDialogueChoiceIndex { get; set; }

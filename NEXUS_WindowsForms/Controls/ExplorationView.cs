@@ -89,6 +89,8 @@ internal sealed class ExplorationView : Control
     private NarrativeDialogue? _activeDialogue;
     private int _dialogueLineIndex;
     private int _dialogueChoiceIndex;
+    private WorldChallengeDefinition? _activeChallenge;
+    private int _challengeStep;
     private string _statusMessage = "Explora la nave. Acércate a un marcador y pulsa E.";
 
     private readonly WorldObject[] _objects =
@@ -98,13 +100,19 @@ internal sealed class ExplorationView : Control
         new("oxygen_cell", "CÉLULA DE OXÍGENO", 7, 23, "Célula de oxígeno añadida al inventario.", 0, 0, 0, "item"),
         new("toolkit", "KIT DE REPARACIÓN", 9, 25, "Kit de reparación añadido al inventario.", 0, 0, 0, "item"),
         new("manifest_document", "MANIFIESTO DE CARGA", 4, 26, "El almacén recibió suministros antes de la anomalía.", 0, 0, 2, "document"),
+        new("spare_fuse", "FUSIBLE AUXILIAR", 7, 26, "Fusible de repuesto añadido al inventario.", 0, 0, 0, "item"),
+        new("life_support_reset", "CONSOLA DE SOPORTE VITAL", 4, 6, "", 0, 0, 0, "challenge"),
         new("signal_terminal", "ANTENA DE COMUNICACIONES", 18, 5, "Descifrar la señal repetida de Eridani-9.", 0, 0, 12, "objective"),
+        new("communications_restore", "RELÉ DE COMUNICACIONES", 22, 7, "", 0, 0, 0, "challenge"),
         new("communications_log", "REGISTRO DE TRANSMISIONES", 22, 5, "La señal contiene una respuesta inteligente.", 0, 0, 3, "document"),
         new("secret_archive", "ARCHIVO OCULTO", 22, 8, "", 0, 0, 8, "secret", "toolkit", "secret_datacube"),
         new("power_cell", "CÉLULA DE ENERGÍA", 30, 5, "Célula de energía añadida al inventario.", 0, 0, 0, "item"),
+        new("generator_repair", "GENERADOR AUXILIAR", 34, 7, "", 0, 0, 0, "challenge"),
         new("lab_document", "INFORME DE LABORATORIO", 27, 7, "El campo de la anomalía reacciona a pulsos eléctricos.", 0, 0, 3, "document"),
         new("research_log", "CUADERNO DE INVESTIGACIÓN", 15, 24, "El acceso a la cámara requiere validar el protocolo.", 0, 0, 3, "document"),
+        new("security_override", "TECLADO DE SEGURIDAD", 22, 24, "", 0, 0, 0, "challenge"),
         new("security_console", "CONSOLA DE INVESTIGACIÓN", 18, 25, "", 0, -4, 5, "objective"),
+        new("anomaly_stabilize", "NODO DE RESONANCIA", 33, 23, "", 0, 0, 0, "challenge"),
         new("anomaly_terminal", "NÚCLEO DE DATOS", 30, 24, "Asegurar los datos del núcleo y completar la expedición.", 0, 0, 18, "objective"),
         new("anomaly_record", "ECO DE LA ANOMALÍA", 33, 25, "El patrón parece responder a la presencia humana.", 0, 0, 5, "document")
     };
@@ -123,29 +131,33 @@ internal sealed class ExplorationView : Control
         ApplySavedDoorState();
         DiscoverCurrentRoom();
         RestoreActiveDialogue();
+        RestoreActiveChallenge();
         BackColor = Color.FromArgb(4, 11, 24);
         ForeColor = NexusTheme.Text;
         DoubleBuffered = true;
-        TabStop = false;
+        // La vista debe poder recibir el teclado al abrir una consola interactiva.
+        TabStop = true;
         MinimumSize = new Size(420, 300);
     }
 
     public string ObjectiveSummary =>
-        $"{ObjectiveMark("access_card")} Obtener tarjeta\r\n" +
-        $"{ObjectiveMark("signal_terminal")} Descifrar señal\r\n" +
-        $"{ObjectiveMark("security_console")} Activar consola\r\n" +
-        $"{ObjectiveMark("anomaly_terminal")} Asegurar núcleo";
+        $"{GetNextObjectiveLabel().Replace("OBJ: ", string.Empty, StringComparison.Ordinal)}\r\n" +
+        $"SISTEMAS RESTAURADOS: {State.CompletedChallenges.Count}/{WorldChallengeCatalog.Challenges.Length}\r\n" +
+        "J: ver objetivos principales y secundarios";
 
     public bool InventoryOpen => _inventoryOpen;
     public bool DialogueOpen => _activeDialogue is not null;
     public bool DialogueAtChoices => _activeDialogue is not null && _dialogueLineIndex >= _activeDialogue.Lines.Count;
     public int DialogueChoiceSelection => _dialogueChoiceIndex;
+    public bool ChallengeOpen => _activeChallenge is not null;
+    public int ChallengeStep => _challengeStep;
+    public int ChallengeLength => _activeChallenge?.Sequence.Length ?? 0;
     public bool MissionLogOpen => _missionLogOpen;
-    public bool BlocksMovement => _inventoryOpen || _missionLogOpen || DialogueOpen;
+    public bool BlocksMovement => _inventoryOpen || _missionLogOpen || DialogueOpen || ChallengeOpen;
 
     public void ToggleInventory()
     {
-        if (DialogueOpen || _missionLogOpen) return;
+        if (DialogueOpen || ChallengeOpen || _missionLogOpen) return;
         _inventoryOpen = !_inventoryOpen;
         _inventorySelection = Math.Clamp(_inventorySelection, 0, Math.Max(0, GetInventoryItems().Count - 1));
         Invalidate();
@@ -153,7 +165,7 @@ internal sealed class ExplorationView : Control
 
     public void ToggleMissionLog()
     {
-        if (DialogueOpen || _inventoryOpen) return;
+        if (DialogueOpen || ChallengeOpen || _inventoryOpen) return;
         _missionLogOpen = !_missionLogOpen;
         Invalidate();
     }
@@ -247,6 +259,9 @@ internal sealed class ExplorationView : Control
             case "power_cell":
                 _statusMessage = "La célula alimenta el acceso de investigación al acercarte a su puerta.";
                 break;
+            case "spare_fuse":
+                _statusMessage = "Fusible reservado para el generador auxiliar del laboratorio.";
+                break;
             case "access_card":
                 _statusMessage = "La tarjeta se valida automáticamente en las puertas de comunicaciones y laboratorio.";
                 break;
@@ -330,6 +345,7 @@ internal sealed class ExplorationView : Control
         _inventorySelection = 0;
         _missionLogOpen = false;
         RestoreActiveDialogue();
+        RestoreActiveChallenge();
         Invalidate();
     }
 
@@ -369,6 +385,40 @@ internal sealed class ExplorationView : Control
         {
             _statusMessage = "No hay ningún objeto o terminal al alcance.";
             Invalidate();
+            return;
+        }
+
+        if (nearby.Id == "signal_terminal" && !State.CompletedChallenges.Contains("communications_restore", StringComparer.OrdinalIgnoreCase))
+        {
+            _statusMessage = "AURA // SIN COMUNICACIONES: repara el relé de la sala antes de analizar la señal.";
+            Invalidate();
+            return;
+        }
+
+        if (nearby.Id == "power_cell" && !State.CompletedChallenges.Contains("generator_repair", StringComparer.OrdinalIgnoreCase))
+        {
+            _statusMessage = "AURA // GENERADOR SIN ENERGÍA: instala el fusible del almacén en el generador auxiliar.";
+            Invalidate();
+            return;
+        }
+
+        if (nearby.Id == "security_console" && !State.CompletedChallenges.Contains("security_override", StringComparer.OrdinalIgnoreCase))
+        {
+            _statusMessage = "AURA // BLOQUEO ACTIVO: sincroniza primero el teclado de seguridad.";
+            Invalidate();
+            return;
+        }
+
+        if (nearby.Id == "anomaly_terminal" && !State.CompletedChallenges.Contains("anomaly_stabilize", StringComparer.OrdinalIgnoreCase))
+        {
+            _statusMessage = "AURA // NÚCLEO INESTABLE: calibra el nodo de resonancia antes de extraer datos.";
+            Invalidate();
+            return;
+        }
+
+        if (nearby.Kind == "challenge")
+        {
+            BeginChallenge(nearby.Id);
             return;
         }
 
@@ -446,6 +496,7 @@ internal sealed class ExplorationView : Control
             "access_card" => "Tarjeta de acceso recogida. Comunicaciones y laboratorio disponibles.",
             "oxygen_cell" => "Célula de oxígeno recogida. Abre el inventario para usarla.",
             "toolkit" => "Kit de reparación recogido. Abre el inventario para usarlo.",
+            "spare_fuse" => "Fusible auxiliar recogido. Llévalo al generador del laboratorio.",
             "power_cell" => "Célula de energía recogida. Desbloquea la zona de investigación.",
             "security_console" => "Protocolo validado. La cámara de la anomalía está desbloqueada.",
             "anomaly_terminal" => "Datos del núcleo asegurados. Exploración completada.",
@@ -490,6 +541,88 @@ internal sealed class ExplorationView : Control
         base.Dispose(disposing);
     }
 
+    public void SubmitChallengeKey(int key)
+    {
+        WorldChallengeDefinition? challenge = _activeChallenge;
+        if (challenge is null || key is < 1 or > 4) return;
+
+        if (challenge.Sequence[_challengeStep] != key)
+        {
+            _challengeStep = 0;
+            State.ActiveChallengeStep = 0;
+            _statusMessage = $"AURA // SECUENCIA INCORRECTA. {challenge.Instruction}";
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(
+                $"Fallo de calibración: {challenge.Title}", challenge.FailureOxygenDamage * -1,
+                challenge.FailureHullDamage * -1));
+            Invalidate();
+            return;
+        }
+
+        _challengeStep++;
+        State.ActiveChallengeStep = _challengeStep;
+        if (_challengeStep >= challenge.Sequence.Length)
+        {
+            AddUnique(State.CompletedChallenges, challenge.Id);
+            CompleteObjective(challenge.Id);
+            if (challenge.RequiredItemId is not null)
+                AddUnique(State.UsedItems, challenge.RequiredItemId);
+
+            WorldEventDefinition? worldEvent = WorldChallengeCatalog.Events
+                .FirstOrDefault(item => item.ChallengeId.Equals(challenge.Id, StringComparison.OrdinalIgnoreCase));
+            if (worldEvent is not null)
+            {
+                State.ActiveWorldEvents.RemoveAll(item => item.Equals(worldEvent.Id, StringComparison.OrdinalIgnoreCase));
+                AddUnique(State.CompletedWorldEvents, worldEvent.Id);
+                State.WorldEventClocks.Remove(worldEvent.Id);
+            }
+
+            _activeChallenge = null;
+            State.ActiveChallengeId = null;
+            State.ActiveChallengeStep = 0;
+            _statusMessage = challenge.SuccessText;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(challenge.Title,
+                challenge.OxygenChange, challenge.HullChange, challenge.DataChange));
+        }
+        else
+        {
+            _statusMessage = $"AURA // CALIBRACIÓN {challenge.Title}: {_challengeStep}/{challenge.Sequence.Length} pulsos.";
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+        Invalidate();
+    }
+
+    public void AdvanceWorld(float elapsedSeconds)
+    {
+        if (_inventoryOpen || _missionLogOpen || DialogueOpen) return;
+        string? currentRoom = GetRoomIdAtTile((int)(State.PlayerX / TileSize), (int)(State.PlayerY / TileSize));
+        foreach (string eventId in State.ActiveWorldEvents.ToArray())
+        {
+            WorldEventDefinition? worldEvent = WorldChallengeCatalog.FindEvent(eventId);
+            if (worldEvent is null || worldEvent.DamageIntervalSeconds <= 0 ||
+                (!worldEvent.DamageAnywhere && !string.Equals(currentRoom, worldEvent.RoomId, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            State.WorldEventClocks.TryGetValue(eventId, out float elapsed);
+            elapsed += Math.Clamp(elapsedSeconds, 0, 0.25f);
+            if (elapsed < worldEvent.DamageIntervalSeconds)
+            {
+                State.WorldEventClocks[eventId] = elapsed;
+                continue;
+            }
+
+            State.WorldEventClocks[eventId] = elapsed - worldEvent.DamageIntervalSeconds;
+            _statusMessage = worldEvent.OxygenDamage > 0
+                ? $"AURA // SOPORTE VITAL INESTABLE: O₂ -{worldEvent.OxygenDamage}%."
+                : $"AURA // INTERFERENCIA ACTIVA: casco -{worldEvent.HullDamage}%.";
+            ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(
+                $"Daño ambiental: {worldEvent.Id}", -worldEvent.OxygenDamage, -worldEvent.HullDamage));
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            Invalidate();
+        }
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
@@ -504,6 +637,7 @@ internal sealed class ExplorationView : Control
         graphics.TranslateTransform(-_cameraX, -_cameraY);
 
         DrawMap(graphics);
+        DrawSystemEventEffects(graphics);
         DrawAnomalyField(graphics);
         DrawFurniture(graphics);
         DrawObjects(graphics);
@@ -511,6 +645,25 @@ internal sealed class ExplorationView : Control
 
         graphics.ResetTransform();
         DrawOverlay(graphics);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Button == MouseButtons.Left && _activeChallenge is not null)
+        {
+            Focus();
+            Rectangle challengePanel = GetChallengePanelBounds();
+            for (int index = 0; index < 4; index++)
+            {
+                if (GetChallengeKeyBounds(challengePanel, index).Contains(e.Location))
+                {
+                    SubmitChallengeKey(index + 1);
+                    return;
+                }
+            }
+            return;
+        }
     }
 
     protected override void OnMouseClick(MouseEventArgs e)
@@ -561,6 +714,59 @@ internal sealed class ExplorationView : Control
         _dialogueLineIndex = Math.Clamp(State.ActiveDialogueLineIndex, 0, _activeDialogue.Lines.Count);
         _dialogueChoiceIndex = Math.Clamp(State.ActiveDialogueChoiceIndex, 0,
             Math.Max(0, _activeDialogue.Choices.Count - 1));
+    }
+
+    private void BeginChallenge(string objectId)
+    {
+        WorldChallengeDefinition? challenge = WorldChallengeCatalog.FindChallenge(objectId);
+        if (challenge is null) return;
+        if (State.CompletedChallenges.Contains(challenge.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            _statusMessage = $"AURA // {challenge.Title}: sistema operativo.";
+            Invalidate();
+            return;
+        }
+
+        WorldEventDefinition? worldEvent = WorldChallengeCatalog.Events
+            .FirstOrDefault(item => item.ChallengeId.Equals(challenge.Id, StringComparison.OrdinalIgnoreCase));
+        if (worldEvent is null || !State.ActiveWorldEvents.Contains(worldEvent.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            _statusMessage = "AURA // EL SISTEMA NO REQUIERE REINICIO.";
+            Invalidate();
+            return;
+        }
+
+        if (challenge.RequiredItemId is not null && !HasAvailableItem(challenge.RequiredItemId))
+        {
+            _statusMessage = $"AURA // REPARACIÓN BLOQUEADA: necesitas {GetItemName(challenge.RequiredItemId)}.";
+            Invalidate();
+            return;
+        }
+
+        _activeChallenge = challenge;
+        _challengeStep = Math.Clamp(State.ActiveChallengeId == challenge.Id ? State.ActiveChallengeStep : 0,
+            0, challenge.Sequence.Length - 1);
+        State.ActiveChallengeId = challenge.Id;
+        State.ActiveChallengeStep = _challengeStep;
+        _statusMessage = challenge.Instruction;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        Invalidate();
+    }
+
+    private void RestoreActiveChallenge()
+    {
+        _activeChallenge = string.IsNullOrWhiteSpace(State.ActiveChallengeId)
+            ? null
+            : WorldChallengeCatalog.FindChallenge(State.ActiveChallengeId);
+        if (_activeChallenge is null || State.CompletedChallenges.Contains(_activeChallenge.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            _activeChallenge = null;
+            State.ActiveChallengeId = null;
+            State.ActiveChallengeStep = 0;
+            return;
+        }
+
+        _challengeStep = Math.Clamp(State.ActiveChallengeStep, 0, _activeChallenge.Sequence.Length - 1);
     }
 
     private void BuildMap()
@@ -797,9 +1003,11 @@ internal sealed class ExplorationView : Control
     {
         float centerX = 31 * TileSize + TileSize / 2f;
         float centerY = 23 * TileSize + TileSize / 2f;
-        float pulse = 3f + MathF.Sin(_animationClock * 1.8f) * 3f;
-        using var fieldBrush = new SolidBrush(Color.FromArgb(27, 233, 71, 209));
-        using var outerPen = new Pen(Color.FromArgb(96, 245, 88, 220), 2);
+        float pulseSpeed = State.ActiveWorldEvents.Contains("anomaly_instability", StringComparer.OrdinalIgnoreCase) ? 3.2f : 1.8f;
+        float pulse = 3f + MathF.Sin(_animationClock * pulseSpeed) * 3f;
+        bool unstable = State.ActiveWorldEvents.Contains("anomaly_instability", StringComparer.OrdinalIgnoreCase);
+        using var fieldBrush = new SolidBrush(unstable ? Color.FromArgb(55, 255, 54, 107) : Color.FromArgb(27, 233, 71, 209));
+        using var outerPen = new Pen(unstable ? Color.FromArgb(180, 255, 77, 112) : Color.FromArgb(96, 245, 88, 220), 2);
         using var innerPen = new Pen(Color.FromArgb(160, 92, 226, 255), 1.5f);
         graphics.FillEllipse(fieldBrush, centerX - 42 - pulse, centerY - 42 - pulse,
             84 + pulse * 2, 84 + pulse * 2);
@@ -812,6 +1020,50 @@ internal sealed class ExplorationView : Control
             graphics.DrawLine(innerPen,
                 centerX + MathF.Cos(angle) * 24, centerY + MathF.Sin(angle) * 24,
                 centerX + MathF.Cos(angle) * 34, centerY + MathF.Sin(angle) * 34);
+        }
+    }
+
+    private void DrawSystemEventEffects(Graphics graphics)
+    {
+        if (State.ActiveWorldEvents.Contains("communications_blackout", StringComparer.OrdinalIgnoreCase))
+        {
+            RoomSpec room = GetRoom("communications");
+            using var blackoutBrush = new SolidBrush(Color.FromArgb(105, 0, 4, 14));
+            using var alarmPen = new Pen(Color.FromArgb(150, 244, 86, 82), 2);
+            FillRoom(graphics, blackoutBrush, room.X, room.Y, room.Width, room.Height);
+            float pulse = 0.5f + 0.5f * MathF.Sin(_animationClock * 5f);
+            alarmPen.Color = Color.FromArgb((int)(85 + pulse * 150), 244, 86, 82);
+            graphics.DrawLine(alarmPen, room.X * TileSize + 12, room.Y * TileSize + 36,
+                (room.X + room.Width) * TileSize - 12, room.Y * TileSize + 36);
+        }
+
+        if (State.ActiveWorldEvents.Contains("lab_power_surge", StringComparer.OrdinalIgnoreCase))
+        {
+            float alpha = 0.5f + 0.5f * MathF.Sin(_animationClock * 9f);
+            using var surgeBrush = new SolidBrush(Color.FromArgb((int)(40 + alpha * 95), 255, 151, 62));
+            float x = 34 * TileSize + TileSize / 2f;
+            float y = 7 * TileSize + TileSize / 2f;
+            graphics.FillEllipse(surgeBrush, x - 24, y - 24, 48, 48);
+            using var sparkPen = new Pen(Color.FromArgb(170, 255, 200, 118), 2);
+            graphics.DrawLine(sparkPen, x - 14, y - 8, x - 3, y + 2);
+            graphics.DrawLine(sparkPen, x + 10, y - 12, x + 1, y - 1);
+        }
+
+        if (State.ActiveWorldEvents.Contains("life_support_failure", StringComparer.OrdinalIgnoreCase))
+        {
+            using var alertPen = new Pen(Color.FromArgb(145, 255, 82, 91), 2);
+            float x = 4 * TileSize + TileSize / 2f;
+            float y = 6 * TileSize + TileSize / 2f;
+            graphics.DrawEllipse(alertPen, x - 20, y - 20, 40, 40);
+        }
+
+        if (State.ActiveWorldEvents.Contains("research_lockdown", StringComparer.OrdinalIgnoreCase))
+        {
+            float pulse = 0.5f + 0.5f * MathF.Sin(_animationClock * 4f);
+            using var lockdownPen = new Pen(Color.FromArgb((int)(90 + pulse * 150), 255, 111, 84), 2);
+            float x = 22 * TileSize + TileSize / 2f;
+            float y = 24 * TileSize + TileSize / 2f;
+            graphics.DrawRectangle(lockdownPen, x - 22, y - 20, 44, 40);
         }
     }
 
@@ -844,7 +1096,8 @@ internal sealed class ExplorationView : Control
             if (item.IsSecret && DistanceTo(item) > 180f)
                 continue;
 
-            bool objective = item.Kind == "objective" || item.Id == "access_card";
+            bool objective = item.Kind is "objective" or "challenge" ||
+                item.Id is "access_card" or "power_cell" or "spare_fuse";
             RectangleF glow = new(x - 17 - pulse, y - 17 - pulse, 34 + pulse * 2, 34 + pulse * 2);
             graphics.FillEllipse(objectGlow, glow);
             DrawInteractable(graphics, item.Id, x, y, objective ? markerBrush : doneBrush, markerPen);
@@ -867,6 +1120,11 @@ internal sealed class ExplorationView : Control
             case "signal_terminal":
             case "security_console":
             case "anomaly_terminal":
+            case "life_support_reset":
+            case "communications_restore":
+            case "generator_repair":
+            case "security_override":
+            case "anomaly_stabilize":
                 RectangleF console = new(x - 13, y - 13, 26, 25);
                 graphics.FillRectangle(shell, console);
                 graphics.DrawRectangle(trim, console.X, console.Y, console.Width, console.Height);
@@ -896,6 +1154,12 @@ internal sealed class ExplorationView : Control
                 graphics.FillRectangle(markerBrush, x - 12, y - 7, 24, 14);
                 graphics.DrawRectangle(markerPen, x - 12, y - 7, 24, 14);
                 graphics.FillRectangle(shell, x + 2, y - 3, 6, 2);
+                break;
+            case "spare_fuse":
+                graphics.FillRectangle(shell, x - 9, y - 10, 18, 20);
+                graphics.DrawRectangle(markerPen, x - 9, y - 10, 18, 20);
+                graphics.DrawLine(trim, x - 5, y - 5, x + 5, y - 5);
+                graphics.DrawLine(trim, x - 5, y + 5, x + 5, y + 5);
                 break;
             case "oxygen_cell":
             case "power_cell":
@@ -958,8 +1222,56 @@ internal sealed class ExplorationView : Control
             DrawInventory(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
         else if (_missionLogOpen)
             DrawMissionLog(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
+        else if (_activeChallenge is not null)
+            DrawChallenge(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
         if (_activeDialogue is not null)
             DrawDialogue(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
+    }
+
+    private void DrawChallenge(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
+        Font textFont, Brush titleBrush, Brush textBrush)
+    {
+        if (_activeChallenge is null) return;
+        Rectangle panel = GetChallengePanelBounds();
+        graphics.FillRectangle(panelBrush, panel);
+        graphics.DrawRectangle(borderPen, panel);
+        graphics.DrawString($"AURA // {_activeChallenge.Title}", titleFont, titleBrush, panel.X + 18, panel.Y + 14);
+        graphics.DrawString(_activeChallenge.Instruction, textFont, textBrush,
+            new RectangleF(panel.X + 18, panel.Y + 44, panel.Width - 36, 44));
+        graphics.DrawString($"SECUENCIA: {_challengeStep}/{_activeChallenge.Sequence.Length}", textFont,
+            titleBrush, panel.X + 18, panel.Y + 91);
+        for (int index = 0; index < 4; index++)
+        {
+            Rectangle key = GetChallengeKeyBounds(panel, index);
+            using var keyBrush = new SolidBrush(Color.FromArgb(50, 22, 118, 151));
+            graphics.FillRectangle(keyBrush, key);
+            graphics.DrawRectangle(borderPen, key);
+            using var keyFont = new Font("Segoe UI", 13f, FontStyle.Bold);
+            graphics.DrawString((index + 1).ToString(), keyFont, titleBrush, key.X + key.Width / 2 - 5,
+                key.Y + 5);
+        }
+        graphics.DrawString("PULSA 1–4 O HAZ CLIC EN UN NÚMERO", textFont, textBrush,
+            panel.X + 18, panel.Bottom - 20);
+    }
+
+    private static Rectangle GetChallengeKeyBounds(Rectangle panel, int index)
+    {
+        int availableWidth = panel.Width - 44;
+        int gap = 10;
+        int keyWidth = Math.Max(42, (availableWidth - gap * 3) / 4);
+        int totalWidth = keyWidth * 4 + gap * 3;
+        int startX = panel.X + (panel.Width - totalWidth) / 2;
+        return new Rectangle(startX + index * (keyWidth + gap), panel.Bottom - 68, keyWidth, 36);
+    }
+
+    private Rectangle GetChallengePanelBounds()
+    {
+        int width = Math.Max(280, Math.Min(590, ClientSize.Width - 32));
+        int safeWidth = Math.Min(width, Math.Max(1, ClientSize.Width - 16));
+        int height = 208;
+        int x = (ClientSize.Width - safeWidth) / 2;
+        int y = Math.Max(16, ClientSize.Height - height - 48);
+        return new Rectangle(x, y, safeWidth, Math.Min(height, Math.Max(120, ClientSize.Height - y - 42)));
     }
 
     private void DrawDialogue(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
@@ -1002,7 +1314,7 @@ internal sealed class ExplorationView : Control
         Font textFont, Brush titleBrush, Brush textBrush)
     {
         int width = Math.Min(650, ClientSize.Width - 32);
-        int height = Math.Min(440, ClientSize.Height - 70);
+        int height = Math.Min(500, ClientSize.Height - 70);
         var panel = new Rectangle((ClientSize.Width - width) / 2, (ClientSize.Height - height) / 2,
             width, height);
         graphics.FillRectangle(panelBrush, panel);
@@ -1010,18 +1322,27 @@ internal sealed class ExplorationView : Control
         graphics.DrawString("REGISTRO DE MISIÓN // J PARA CERRAR", titleFont, titleBrush,
             panel.X + 18, panel.Y + 14);
         IReadOnlyList<NarrativeObjective> objectives = NexusNarrative.GetObjectives(State);
-        int y = panel.Y + 48;
-        foreach (NarrativeObjective objective in objectives)
+        NarrativeObjective[] mainObjectives = objectives.Where(item => !item.IsSecondary).ToArray();
+        NarrativeObjective[] sideObjectives = objectives.Where(item => item.IsSecondary).ToArray();
+        int columnWidth = (panel.Width - 54) / 2;
+        for (int column = 0; column < 2; column++)
         {
-            string marker = objective.IsComplete ? "[✓]" : "[ ]";
-            Color color = objective.IsComplete ? Color.FromArgb(103, 228, 177) : NexusTheme.Text;
-            using var objectiveBrush = new SolidBrush(color);
-            string category = objective.IsSecondary ? "SECUNDARIA" : "PRINCIPAL";
-            graphics.DrawString($"{marker} {category} // {objective.Title}", textFont, objectiveBrush,
-                panel.X + 18, y);
-            using var roomFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-            graphics.DrawString(objective.Room, roomFont, textBrush, panel.Right - 180, y + 1);
-            y += 28;
+            NarrativeObjective[] list = column == 0 ? mainObjectives : sideObjectives;
+            int x = panel.X + 18 + column * (columnWidth + 18);
+            graphics.DrawString(column == 0 ? "OBJETIVOS PRINCIPALES" : "OBJETIVOS SECUNDARIOS",
+                textFont, titleBrush, x, panel.Y + 42);
+            for (int index = 0; index < list.Length; index++)
+            {
+                NarrativeObjective objective = list[index];
+                string marker = objective.IsComplete ? "[✓]" : "[ ]";
+                Color color = objective.IsComplete ? Color.FromArgb(103, 228, 177) : NexusTheme.Text;
+                using var objectiveBrush = new SolidBrush(color);
+                int y = panel.Y + 68 + index * 30;
+                graphics.DrawString($"{marker} {objective.Title}", textFont, objectiveBrush,
+                    new RectangleF(x, y, columnWidth, 19));
+                using var roomFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+                graphics.DrawString(objective.Room, roomFont, textBrush, x + 20, y + 15);
+            }
         }
         graphics.DrawString("Los documentos y las decisiones quedan guardados con la expedición.",
             textFont, titleBrush, panel.X + 18, panel.Bottom - 30);
@@ -1055,16 +1376,10 @@ internal sealed class ExplorationView : Control
         DrawMiniBar(graphics, x + 8, 82, "DATOS", _data, Color.FromArgb(96, 236, 187), textFont, textBrush);
 
         string objective = State.CompletedObjectives.Contains("anomaly_terminal", StringComparer.OrdinalIgnoreCase)
-            ? "OBJ: EXPLORACIÓN COMPLETA"
-            : State.CompletedObjectives.Contains("security_console", StringComparer.OrdinalIgnoreCase)
-                ? "OBJ: ASEGURAR NÚCLEO"
-                : !State.CompletedObjectives.Contains("signal_terminal", StringComparer.OrdinalIgnoreCase)
-                    ? "OBJ: DESCIFRAR SEÑAL"
-                    : !State.CollectedItems.Contains("access_card", StringComparer.OrdinalIgnoreCase)
-                        ? "OBJ: OBTENER TARJETA"
-                        : !HasAvailableItem("power_cell")
-                            ? "OBJ: CÉLULA EN LABORATORIO"
-                            : "OBJ: ACTIVAR CONSOLA";
+            ? "OBJ: EXPEDICIÓN COMPLETA"
+            : State.CompletedChallenges.Contains("life_support_reset", StringComparer.OrdinalIgnoreCase)
+                ? GetNextObjectiveLabel()
+                : "OBJ: REPARAR SOPORTE VITAL";
         graphics.DrawString(objective, textFont, textBrush, x + 8, 106);
         List<InventoryEntry> inventoryItems = GetInventoryItems();
         string inventory = inventoryItems.Count == 0
@@ -1078,6 +1393,20 @@ internal sealed class ExplorationView : Control
         graphics.FillRectangle(panelBrush, map);
         graphics.DrawRectangle(borderPen, map);
         DrawMiniMap(graphics, map);
+    }
+
+    private string GetNextObjectiveLabel()
+    {
+        if (!State.CollectedItems.Contains("access_card", StringComparer.OrdinalIgnoreCase)) return "OBJ: TARJETA DE ACCESO";
+        if (!State.CollectedItems.Contains("spare_fuse", StringComparer.OrdinalIgnoreCase)) return "OBJ: FUSIBLE EN ALMACÉN";
+        if (!State.CompletedChallenges.Contains("communications_restore", StringComparer.OrdinalIgnoreCase)) return "OBJ: RESTAURAR COMMS";
+        if (!State.CompletedObjectives.Contains("signal_terminal", StringComparer.OrdinalIgnoreCase)) return "OBJ: DESCIFRAR SEÑAL";
+        if (!State.CompletedChallenges.Contains("generator_repair", StringComparer.OrdinalIgnoreCase)) return "OBJ: REPARAR GENERADOR";
+        if (!State.CollectedItems.Contains("power_cell", StringComparer.OrdinalIgnoreCase)) return "OBJ: CÉLULA EN LABORATORIO";
+        if (!State.CompletedChallenges.Contains("security_override", StringComparer.OrdinalIgnoreCase)) return "OBJ: ANULAR SEGURIDAD";
+        if (!State.CompletedObjectives.Contains("security_console", StringComparer.OrdinalIgnoreCase)) return "OBJ: VALIDAR CONSOLA";
+        if (!State.CompletedChallenges.Contains("anomaly_stabilize", StringComparer.OrdinalIgnoreCase)) return "OBJ: ESTABILIZAR NÚCLEO";
+        return "OBJ: ASEGURAR DATOS";
     }
 
     private static void DrawMiniBar(Graphics graphics, int x, int y, string label, int value,
@@ -1136,8 +1465,8 @@ internal sealed class ExplorationView : Control
                 mapY + door.Y * scaleY - 2, 5, 5);
         }
 
-        foreach (WorldObject objective in _objects.Where(item => item.Kind == "objective" ||
-                     item.Id is "access_card" or "power_cell"))
+        foreach (WorldObject objective in _objects.Where(item => item.Kind is "objective" or "challenge" ||
+                     item.Id is "access_card" or "power_cell" or "spare_fuse"))
         {
             string roomId = GetRoomIdAtTile(objective.X, objective.Y) ?? string.Empty;
             if (!State.ExploredRooms.Contains(roomId, StringComparer.OrdinalIgnoreCase) ||
@@ -1192,7 +1521,7 @@ internal sealed class ExplorationView : Control
     {
         string[] order =
         {
-            "access_card", "power_cell", "oxygen_cell", "toolkit", "secret_datacube",
+            "access_card", "power_cell", "oxygen_cell", "toolkit", "spare_fuse", "secret_datacube",
             "ship_log", "manifest_document", "communications_log", "lab_document", "research_log", "anomaly_record"
         };
         return order
@@ -1208,6 +1537,7 @@ internal sealed class ExplorationView : Control
         "power_cell" => "Célula de energía",
         "oxygen_cell" => "Célula de oxígeno",
         "toolkit" => "Kit de reparación",
+        "spare_fuse" => "Fusible auxiliar",
         "secret_datacube" => "Cubo de datos secreto",
         "ship_log" => "Bitácora del puente",
         "manifest_document" => "Manifiesto de carga",
@@ -1223,6 +1553,7 @@ internal sealed class ExplorationView : Control
         "access_card" => "ACCESO",
         "power_cell" or "oxygen_cell" => "ENERGÍA",
         "toolkit" => "HERRAMIENTA",
+        "spare_fuse" => "REPUESTO",
         "secret_datacube" => "ESPECIAL",
         _ => "DOCUMENTO"
     };
@@ -1275,16 +1606,27 @@ internal sealed class ExplorationView : Control
     {
         string? roomId = GetRoomIdAtTile((int)(State.PlayerX / TileSize), (int)(State.PlayerY / TileSize));
         if (roomId is null) return false;
+        bool changed = false;
         if (!State.ExploredRooms.Contains(roomId, StringComparer.OrdinalIgnoreCase))
         {
             State.ExploredRooms.Add(roomId);
             _statusMessage = roomId == "central_corridor"
                 ? "CORREDOR CENTRAL CARTOGRAFIADO. Las salidas aparecen en el minimapa."
                 : $"Nueva zona cartografiada: {GetRoom(roomId).Title}.";
-            return true;
+            changed = true;
         }
 
-        return false;
+        WorldEventDefinition? roomEvent = WorldChallengeCatalog.EventForRoom(roomId);
+        if (roomEvent is not null && !State.TriggeredWorldEvents.Contains(roomEvent.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            AddUnique(State.TriggeredWorldEvents, roomEvent.Id);
+            AddUnique(State.ActiveWorldEvents, roomEvent.Id);
+            State.WorldEventClocks[roomEvent.Id] = 0;
+            _statusMessage = roomEvent.AlertText;
+            changed = true;
+        }
+
+        return changed;
     }
 
     private float DistanceTo(WorldObject item) => DistanceTo(item.X, item.Y);
@@ -1299,9 +1641,6 @@ internal sealed class ExplorationView : Control
         float dy = State.PlayerY - y;
         return MathF.Sqrt(dx * dx + dy * dy);
     }
-
-    private string ObjectiveMark(string id) =>
-        State.CompletedObjectives.Contains(id, StringComparer.OrdinalIgnoreCase) ? "[✓]" : "[ ]";
 
     private void CompleteObjective(string id)
     {
@@ -1402,6 +1741,11 @@ internal sealed class ExplorationView : Control
         State.FoundSecrets ??= new List<string>();
         State.SeenDialogues ??= new List<string>();
         State.NarrativeDecisions ??= new List<string>();
+        State.TriggeredWorldEvents ??= new List<string>();
+        State.ActiveWorldEvents ??= new List<string>();
+        State.CompletedWorldEvents ??= new List<string>();
+        State.CompletedChallenges ??= new List<string>();
+        State.WorldEventClocks ??= new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 
         // Translate names and the former security-door flag from earlier saved JSON snapshots.
         var legacyRooms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -1454,6 +1798,7 @@ internal sealed class ExplorationView : Control
 
         State.ActiveDialogueLineIndex = Math.Max(0, State.ActiveDialogueLineIndex);
         State.ActiveDialogueChoiceIndex = Math.Max(0, State.ActiveDialogueChoiceIndex);
+        State.ActiveChallengeStep = Math.Max(0, State.ActiveChallengeStep);
     }
 
     private static void AddUnique(List<string> values, string value)

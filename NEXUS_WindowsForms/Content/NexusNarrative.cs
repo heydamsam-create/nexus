@@ -77,14 +77,21 @@ internal static class NexusNarrative
         bool HasObjective(string id) => state.CompletedObjectives.Contains(id, StringComparer.OrdinalIgnoreCase);
         bool HasRead(string id) => state.ReadDocuments.Contains(id, StringComparer.OrdinalIgnoreCase);
         bool HasSecret(string id) => state.FoundSecrets.Contains(id, StringComparer.OrdinalIgnoreCase);
+        bool HasChallenge(string id) => state.CompletedChallenges.Contains(id, StringComparer.OrdinalIgnoreCase);
 
         return new[]
         {
             new NarrativeObjective("Recuperar la bitácora del puente", "CENTRO DE CONTROL", HasRead("ship_log"), false),
+            new NarrativeObjective("Restaurar el soporte vital", "CENTRO DE CONTROL", HasChallenge("life_support_reset"), false),
             new NarrativeObjective("Encontrar la tarjeta de acceso", "ALMACÉN", HasItem("access_card"), false),
+            new NarrativeObjective("Recuperar un fusible auxiliar", "ALMACÉN", HasItem("spare_fuse"), false),
+            new NarrativeObjective("Restaurar las comunicaciones", "COMUNICACIONES", HasChallenge("communications_restore"), false),
             new NarrativeObjective("Descifrar la señal", "COMUNICACIONES", HasObjective("signal_terminal"), false),
+            new NarrativeObjective("Reparar el generador", "LABORATORIO PRINCIPAL", HasChallenge("generator_repair"), false),
             new NarrativeObjective("Recuperar la célula de energía", "LABORATORIO PRINCIPAL", HasItem("power_cell"), false),
+            new NarrativeObjective("Anular el bloqueo de seguridad", "INVESTIGACIÓN", HasChallenge("security_override"), false),
             new NarrativeObjective("Validar el protocolo de seguridad", "INVESTIGACIÓN", HasObjective("security_console"), false),
+            new NarrativeObjective("Estabilizar la resonancia", "CÁMARA DE LA ANOMALÍA", HasChallenge("anomaly_stabilize"), false),
             new NarrativeObjective("Asegurar los datos del núcleo", "CÁMARA DE LA ANOMALÍA", HasObjective("anomaly_terminal"), false),
             new NarrativeObjective("Leer el manifiesto de carga", "ALMACÉN", HasRead("manifest_document"), true),
             new NarrativeObjective("Leer las transmisiones", "COMUNICACIONES", HasRead("communications_log"), true),
