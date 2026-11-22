@@ -12,6 +12,7 @@ namespace NEXUS_WindowsForms.Services
         public string NombreCadete { get; set; } = string.Empty;
         public string NombreRanura { get; set; } = string.Empty;
         public string EtapaActual { get; set; } = string.Empty;
+        public string? EstadoExploracionJson { get; set; }
         public int Oxigeno { get; set; }
         public int IntegridadCasco { get; set; }
         public int DatosRecuperados { get; set; }
@@ -27,11 +28,25 @@ namespace NEXUS_WindowsForms.Services
     {
         // Cadena de conexión hacia tu servidor local SQL Server
         private readonly string _connectionString =
-            @"Server=DESKTOP-LCFKC8Q\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;";
+            Environment.GetEnvironmentVariable("NEXUS_SQL_CONNECTION_STRING")
+            ?? @"Server=DESKTOP-LCFKC8Q\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;";
 
         public SqlConnection GetConnection()
         {
             return new SqlConnection(_connectionString);
+        }
+
+        private static void EnsureExplorationStateColumn(SqlConnection connection)
+        {
+            const string migrationSql = @"
+                IF COL_LENGTH('dbo.EstadoNave', 'EstadoExploracionJson') IS NULL
+                BEGIN
+                    ALTER TABLE dbo.EstadoNave
+                        ADD EstadoExploracionJson NVARCHAR(MAX) NULL;
+                END;";
+
+            using SqlCommand command = new(migrationSql, connection);
+            command.ExecuteNonQuery();
         }
 
         public bool ProbarConexion(out string mensaje)
@@ -40,7 +55,7 @@ namespace NEXUS_WindowsForms.Services
             {
                 using SqlConnection conn = GetConnection();
                 conn.Open();
-                mensaje = "Conexión exitosa con NexusDB en DESKTOP-LCFKC8Q\\SQLEXPRESS.";
+                mensaje = "Conexión exitosa con NexusDB.";
                 return true;
             }
             catch (Exception ex)
@@ -96,12 +111,14 @@ namespace NEXUS_WindowsForms.Services
             bool descensoDirecto,
             bool senalConfiable,
             bool sondaEnviada,
-            IReadOnlyList<string> decisiones)
+            IReadOnlyList<string> decisiones,
+            string? estadoExploracionJson = null)
         {
             int idCadete = ObtenerOCrearCadete(nombreCadete);
 
             using SqlConnection conn = GetConnection();
             conn.Open();
+            EnsureExplorationStateColumn(conn);
             using SqlTransaction tx = conn.BeginTransaction();
 
             try
@@ -133,7 +150,8 @@ namespace NEXUS_WindowsForms.Services
                             EscaneoOrbital = @Escaneo,
                             DescensoDirecto = @Descenso,
                             SenalConfiable = @Senal,
-                            SondaEnviada = @Sonda
+                            SondaEnviada = @Sonda,
+                            EstadoExploracionJson = @EstadoExploracionJson
                         WHERE IdExpedicion = @IdExpedicion;";
 
                     using SqlCommand cmdEstado = new(updateEstadoSql, conn, tx);
@@ -144,6 +162,7 @@ namespace NEXUS_WindowsForms.Services
                     cmdEstado.Parameters.AddWithValue("@Descenso", descensoDirecto);
                     cmdEstado.Parameters.AddWithValue("@Senal", senalConfiable);
                     cmdEstado.Parameters.AddWithValue("@Sonda", sondaEnviada);
+                    cmdEstado.Parameters.AddWithValue("@EstadoExploracionJson", (object?)estadoExploracionJson ?? DBNull.Value);
                     cmdEstado.Parameters.AddWithValue("@IdExpedicion", idExpedicion);
                     cmdEstado.ExecuteNonQuery();
                 }
@@ -162,9 +181,9 @@ namespace NEXUS_WindowsForms.Services
 
                     const string insertEstadoSql = @"
                         INSERT INTO dbo.EstadoNave
-                        (IdExpedicion, Oxigeno, IntegridadCasco, DatosRecuperados, EscaneoOrbital, DescensoDirecto, SenalConfiable, SondaEnviada)
+                        (IdExpedicion, Oxigeno, IntegridadCasco, DatosRecuperados, EscaneoOrbital, DescensoDirecto, SenalConfiable, SondaEnviada, EstadoExploracionJson)
                         VALUES
-                        (@IdExpedicion, @Oxigeno, @Casco, @Datos, @Escaneo, @Descenso, @Senal, @Sonda);";
+                        (@IdExpedicion, @Oxigeno, @Casco, @Datos, @Escaneo, @Descenso, @Senal, @Sonda, @EstadoExploracionJson);";
 
                     using SqlCommand cmdEstado = new(insertEstadoSql, conn, tx);
                     cmdEstado.Parameters.AddWithValue("@IdExpedicion", idExpedicion);
@@ -175,6 +194,7 @@ namespace NEXUS_WindowsForms.Services
                     cmdEstado.Parameters.AddWithValue("@Descenso", descensoDirecto);
                     cmdEstado.Parameters.AddWithValue("@Senal", senalConfiable);
                     cmdEstado.Parameters.AddWithValue("@Sonda", sondaEnviada);
+                    cmdEstado.Parameters.AddWithValue("@EstadoExploracionJson", (object?)estadoExploracionJson ?? DBNull.Value);
                     cmdEstado.ExecuteNonQuery();
                 }
 
@@ -218,11 +238,13 @@ namespace NEXUS_WindowsForms.Services
             var lista = new List<SavedExpeditionInfo>();
             using SqlConnection conn = GetConnection();
             conn.Open();
+            EnsureExplorationStateColumn(conn);
 
             const string sql = @"
                 SELECT e.IdExpedicion, c.NombreCadete, e.NombreRanura, e.EtapaActual, e.FechaUltimoGuardado,
                        n.Oxigeno, n.IntegridadCasco, n.DatosRecuperados,
-                       n.EscaneoOrbital, n.DescensoDirecto, n.SenalConfiable, n.SondaEnviada
+                       n.EscaneoOrbital, n.DescensoDirecto, n.SenalConfiable, n.SondaEnviada,
+                       n.EstadoExploracionJson
                 FROM dbo.Expediciones e
                 INNER JOIN dbo.Cadetes c ON e.IdCadete = c.IdCadete
                 INNER JOIN dbo.EstadoNave n ON e.IdExpedicion = n.IdExpedicion
@@ -247,7 +269,8 @@ namespace NEXUS_WindowsForms.Services
                         EscaneoOrbital = reader.GetBoolean(8),
                         DescensoDirecto = reader.GetBoolean(9),
                         SenalConfiable = reader.GetBoolean(10),
-                        SondaEnviada = reader.GetBoolean(11)
+                        SondaEnviada = reader.GetBoolean(11),
+                        EstadoExploracionJson = reader.IsDBNull(12) ? null : reader.GetString(12)
                     });
                 }
             }

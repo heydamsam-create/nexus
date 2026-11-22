@@ -1,5 +1,8 @@
 using NEXUS_WindowsForms.Models;
 using NEXUS_WindowsForms.Services;
+using NEXUS_WindowsForms.Controls;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace NEXUS_WindowsForms
 {
@@ -14,8 +17,13 @@ namespace NEXUS_WindowsForms
 
         private readonly MissionGame _game = new();
         private readonly DatabaseService _db = new();
+        private readonly HashSet<Keys> _heldKeys = new();
+        private readonly System.Windows.Forms.Timer _gameTimer = new() { Interval = 16 };
+        private readonly System.Windows.Forms.Timer _autosaveTimer = new() { Interval = 1200 };
+        private readonly Stopwatch _frameClock = Stopwatch.StartNew();
         private int? _currentExpeditionId;
         private string _currentCadetName = "Cadete Vance";
+        private bool _pendingAutoSave;
 
         private Label _phaseLabel = null!;
         private Label _stepLabel = null!;
@@ -29,9 +37,12 @@ namespace NEXUS_WindowsForms
         private Label _oxygenValueLabel = null!;
         private Label _hullValueLabel = null!;
         private Label _dataValueLabel = null!;
+        private Label _objectiveValueLabel = null!;
         private Panel _oxygenFill = null!;
         private Panel _hullFill = null!;
         private Panel _dataFill = null!;
+        private Panel _storyContentPanel = null!;
+        private ExplorationView _explorationView = null!;
 
         internal event EventHandler? BackRequested;
 
@@ -51,6 +62,44 @@ namespace NEXUS_WindowsForms
                 existingControl.Dispose();
             }
             BuildInterface();
+            KeyPreview = true;
+            KeyDown += FormMision_KeyDown;
+            KeyUp += FormMision_KeyUp;
+            Deactivate += (_, _) => _heldKeys.Clear();
+            _gameTimer.Tick += GameTimer_Tick;
+            _autosaveTimer.Tick += (_, _) =>
+            {
+                _autosaveTimer.Stop();
+                if (_pendingAutoSave)
+                {
+                    SaveCurrentExpedition(showDialog: false);
+                }
+            };
+            VisibleChanged += (_, _) =>
+            {
+                if (!Visible)
+                {
+                    StopGameLoop();
+                }
+                else if (_game.CurrentStageKey == "Exploration")
+                {
+                    StartGameLoop();
+                }
+            };
+            FormClosing += (_, _) =>
+            {
+                StopGameLoop();
+                _autosaveTimer.Stop();
+                if (_game.CurrentStageKey != "Completed")
+                {
+                    SaveCurrentExpedition(showDialog: false);
+                }
+            };
+            Disposed += (_, _) =>
+            {
+                _gameTimer.Dispose();
+                _autosaveTimer.Dispose();
+            };
             RenderMission();
         }
 
@@ -200,6 +249,27 @@ namespace NEXUS_WindowsForms
                 Padding = new Padding(0, 10, 8, 0),
                 UseCompatibleTextRendering = true
             };
+            _explorationView = new ExplorationView
+            {
+                Dock = DockStyle.Fill,
+                Visible = false,
+                Margin = new Padding(0)
+            };
+            _explorationView.StateChanged += (_, _) =>
+            {
+                _objectiveValueLabel.Text = _explorationView.ObjectiveSummary;
+                _missionProgressFill.Invalidate();
+                ScheduleAutoSave();
+            };
+            _explorationView.ActionCompleted += ExplorationView_ActionCompleted;
+            _storyContentPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = PanelColor,
+                Margin = new Padding(0)
+            };
+            _storyContentPanel.Controls.Add(_narrativeLabel);
+            _storyContentPanel.Controls.Add(_explorationView);
             _saveStatusLabel = new Label
             {
                 Dock = DockStyle.Bottom,
@@ -209,7 +279,7 @@ namespace NEXUS_WindowsForms
                 TextAlign = ContentAlignment.MiddleLeft,
                 Text = "SQL SERVER: LISTO PARA GUARDAR EXPEDICIÓN"
             };
-            storyPanel.Controls.Add(_narrativeLabel);
+            storyPanel.Controls.Add(_storyContentPanel);
             storyPanel.Controls.Add(_saveStatusLabel);
             storyPanel.Controls.Add(_phaseLabel);
             main.Controls.Add(storyPanel, 0, 0);
@@ -257,14 +327,16 @@ namespace NEXUS_WindowsForms
                 Padding = new Padding(12),
                 Margin = new Padding(0, 3, 0, 10)
             };
-            objectiveCard.Controls.Add(new Label
+            _objectiveValueLabel = new Label
             {
                 Text = "Investigar la señal y asegurar los datos de la anomalía.",
                 Dock = DockStyle.Fill,
                 ForeColor = TextColor,
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
-                UseCompatibleTextRendering = true
-            });
+                UseCompatibleTextRendering = true,
+                Padding = new Padding(0, 4, 0, 0)
+            };
+            objectiveCard.Controls.Add(_objectiveValueLabel);
             objectiveCard.Controls.Add(new Label
             {
                 Text = "OBJETIVO",
@@ -451,17 +523,42 @@ namespace NEXUS_WindowsForms
         {
             _phaseLabel.Text = _game.PhaseName;
             _narrativeLabel.Text = _game.Narrative;
+            bool isExploringShip = _game.CurrentStageKey == "Exploration";
+            _explorationView.Visible = isExploringShip;
+            _narrativeLabel.Visible = !isExploringShip;
+            if (isExploringShip)
+            {
+                _explorationView.BringToFront();
+                _objectiveValueLabel.Text = _explorationView.ObjectiveSummary;
+            }
+            else
+            {
+                _narrativeLabel.BringToFront();
+                _objectiveValueLabel.Text = "Investigar la señal y asegurar los datos de la anomalía.";
+            }
             _statusValueLabel.Text = _game.StatusText;
             _routeValueLabel.Text = $"RUTA: {_game.RouteName}";
             _oxygenValueLabel.Text = $"{_game.Oxygen}%";
             _hullValueLabel.Text = $"{_game.HullIntegrity}%";
             _dataValueLabel.Text = $"{_game.DataRecovered}%";
 
+            _explorationView.SetMissionVitals(_game.Oxygen, _game.HullIntegrity, _game.DataRecovered);
+
+            _explorationView.SetMissionVitals(_game.Oxygen, _game.HullIntegrity, _game.DataRecovered);
+
             SetMeter(_oxygenFill, _oxygenValueLabel, _game.Oxygen);
             SetMeter(_hullFill, _hullValueLabel, _game.HullIntegrity);
             SetMeter(_dataFill, _dataValueLabel, _game.DataRecovered);
             UpdateMissionProgress();
             RenderChoices();
+            if (isExploringShip && Visible)
+            {
+                StartGameLoop();
+            }
+            else
+            {
+                StopGameLoop();
+            }
         }
 
         private static void SetMeter(Panel fill, Label valueLabel, int value)
@@ -508,7 +605,9 @@ namespace NEXUS_WindowsForms
                 _choicesPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
                 _choicesPanel.Controls.Add(new Label
                 {
-                    Text = "La misión ha finalizado.",
+                    Text = _game.CurrentStageKey == "Exploration"
+                        ? "W A S D / FLECHAS: MOVER    •    E: INTERACTUAR"
+                        : "La misión ha finalizado.",
                     Dock = DockStyle.Fill,
                     ForeColor = MutedTextColor,
                     TextAlign = ContentAlignment.MiddleCenter
@@ -543,6 +642,7 @@ namespace NEXUS_WindowsForms
             if (optionId == "RESTART")
             {
                 _game.Reset();
+                _explorationView.RestoreState(new ExplorationSaveState());
                 _currentExpeditionId = null;
                 LastResult = null;
                 _saveStatusLabel.Text = "SQL SERVER: NUEVA EXPEDICIÓN INICIADA";
@@ -607,10 +707,12 @@ namespace NEXUS_WindowsForms
                     _game.DescendedEarly,
                     _game.TrustedSignal,
                     _game.SentProbe,
-                    _game.Decisions);
+                    _game.Decisions,
+                    JsonSerializer.Serialize(_explorationView.State));
 
                 _saveStatusLabel.ForeColor = Color.FromArgb(101, 244, 194);
                 _saveStatusLabel.Text = $"SQL SERVER: PARTIDA GUARDADA (ID #{_currentExpeditionId} • {DateTime.Now:HH:mm:ss})";
+                _pendingAutoSave = false;
 
                 if (showDialog)
                 {
@@ -625,6 +727,7 @@ namespace NEXUS_WindowsForms
             {
                 _saveStatusLabel.ForeColor = NexusTheme.Error;
                 _saveStatusLabel.Text = $"ERROR SQL: {ex.Message}";
+                _pendingAutoSave = false;
                 if (showDialog)
                 {
                     MessageBox.Show($"No se pudo guardar en SQL Server:\n{ex.Message}", "Error SQL", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -694,6 +797,23 @@ namespace NEXUS_WindowsForms
                             chosen.SenalConfiable,
                             chosen.SondaEnviada,
                             chosen.Decisiones);
+                        ExplorationSaveState? explorationState;
+                        try
+                        {
+                            explorationState = string.IsNullOrWhiteSpace(chosen.EstadoExploracionJson)
+                                ? new ExplorationSaveState()
+                                : JsonSerializer.Deserialize<ExplorationSaveState>(chosen.EstadoExploracionJson);
+                        }
+                        catch (JsonException)
+                        {
+                            explorationState = new ExplorationSaveState();
+                            MessageBox.Show(
+                                "El estado guardado del mapa no se pudo leer. Se iniciará la exploración desde el comienzo.",
+                                "NEXUS // Estado de exploración",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+                        }
+                        _explorationView.RestoreState(explorationState ?? new ExplorationSaveState());
 
                         LastResult = null;
                         _saveStatusLabel.ForeColor = Color.FromArgb(101, 244, 194);
@@ -716,7 +836,99 @@ namespace NEXUS_WindowsForms
 
         private void btnVolver_Click(object? sender, EventArgs e)
         {
+            StopGameLoop();
+            if (_game.CurrentStageKey != "Completed")
+            {
+                SaveCurrentExpedition(showDialog: false);
+            }
             BackRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void FormMision_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (_game.CurrentStageKey != "Exploration")
+            {
+                return;
+            }
+
+            bool firstKeyDown = _heldKeys.Add(e.KeyCode);
+            if (e.KeyCode == Keys.E && firstKeyDown)
+            {
+                _explorationView.Interact();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (e.KeyCode is Keys.W or Keys.A or Keys.S or Keys.D or Keys.Up or Keys.Down or Keys.Left or Keys.Right)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void FormMision_KeyUp(object? sender, KeyEventArgs e)
+        {
+            _heldKeys.Remove(e.KeyCode);
+        }
+
+        private void GameTimer_Tick(object? sender, EventArgs e)
+        {
+            if (!Visible || _game.CurrentStageKey != "Exploration")
+            {
+                StopGameLoop();
+                return;
+            }
+
+            float elapsed = (float)_frameClock.Elapsed.TotalSeconds;
+            _frameClock.Restart();
+            int horizontal = IsKeyHeld(Keys.A, Keys.Left) ? -1 : IsKeyHeld(Keys.D, Keys.Right) ? 1 : 0;
+            int vertical = IsKeyHeld(Keys.W, Keys.Up) ? -1 : IsKeyHeld(Keys.S, Keys.Down) ? 1 : 0;
+            if (_explorationView.MovePlayer(horizontal, vertical, elapsed))
+            {
+                ScheduleAutoSave();
+            }
+        }
+
+        private bool IsKeyHeld(Keys first, Keys alternate) =>
+            _heldKeys.Contains(first) || _heldKeys.Contains(alternate);
+
+        private void StartGameLoop()
+        {
+            if (!_gameTimer.Enabled)
+            {
+                _frameClock.Restart();
+                _gameTimer.Start();
+            }
+        }
+
+        private void StopGameLoop()
+        {
+            _gameTimer.Stop();
+            _heldKeys.Clear();
+        }
+
+        private void ScheduleAutoSave()
+        {
+            if (_game.CurrentStageKey == "Completed")
+            {
+                return;
+            }
+
+            _pendingAutoSave = true;
+            _autosaveTimer.Stop();
+            _autosaveTimer.Start();
+        }
+
+        private void ExplorationView_ActionCompleted(object? sender, ExplorationActionEventArgs e)
+        {
+            _game.RecordExplorationAction(e.Decision, e.OxygenChange, e.HullChange, e.DataChange);
+            if (e.CompletesExploration)
+            {
+                _game.CompleteExploration();
+            }
+            RenderMission();
+            ScheduleAutoSave();
         }
 
         private void FormMision_Load(object sender, EventArgs e)

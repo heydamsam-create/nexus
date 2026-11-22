@@ -21,6 +21,7 @@ namespace NEXUS_WindowsForms.Services
         private enum MissionStage
         {
             Briefing,
+            Exploration,
             Approach,
             Signal,
             Surface,
@@ -39,26 +40,28 @@ namespace NEXUS_WindowsForms.Services
         public int Oxygen { get; private set; } = 100;
         public int HullIntegrity { get; private set; } = 100;
         public int DataRecovered { get; private set; }
-        public int TotalSteps => 4;
+        public int TotalSteps => 5;
 
         public int ProgressStep => _stage switch
         {
             MissionStage.Briefing => 0,
-            MissionStage.Approach => 1,
-            MissionStage.Signal => 2,
-            MissionStage.Surface => 3,
-            MissionStage.Core => 4,
-            MissionStage.Completed => 4,
+            MissionStage.Exploration => 1,
+            MissionStage.Approach => 2,
+            MissionStage.Signal => 3,
+            MissionStage.Surface => 4,
+            MissionStage.Core => 5,
+            MissionStage.Completed => 5,
             _ => 0
         };
 
         public string PhaseName => _stage switch
         {
             MissionStage.Briefing => "BRIEFING DE LA TRIPULACIÓN",
-            MissionStage.Approach => "ETAPA 1  //  APROXIMACIÓN",
-            MissionStage.Signal => "ETAPA 2  //  CONTACTO",
-            MissionStage.Surface => "ETAPA 3  //  EXPLORACIÓN",
-            MissionStage.Core => "ETAPA 4  //  ANOMALÍA",
+            MissionStage.Exploration => "ETAPA 1  //  EXPLORACIÓN DE NEXUS",
+            MissionStage.Approach => "ETAPA 2  //  APROXIMACIÓN",
+            MissionStage.Signal => "ETAPA 3  //  CONTACTO",
+            MissionStage.Surface => "ETAPA 4  //  EXPLORACIÓN DE EOS",
+            MissionStage.Core => "ETAPA 5  //  ANOMALÍA",
             MissionStage.Completed => _result?.Outcome ?? "MISIÓN FINALIZADA",
             _ => "OPERACIÓN UMBRAL DE EOS"
         };
@@ -116,8 +119,9 @@ namespace NEXUS_WindowsForms.Services
             {
                 MissionStage.Briefing => new List<MissionOption>
                 {
-                    new("START", "INICIAR EXPLORACIÓN", "Inicia la operación en Eridani-9.")
+                    new("START", "INICIAR EXPLORACIÓN", "Entra en la nave y prepara la expedición.")
                 },
+                MissionStage.Exploration => Array.Empty<MissionOption>(),
                 MissionStage.Approach => new List<MissionOption>
                 {
                     new("SCAN_ORBIT", "ESCANEAR DESDE ÓRBITA", "Recupera datos antes de acercarte al cráter."),
@@ -165,7 +169,7 @@ namespace NEXUS_WindowsForms.Services
             switch (_stage)
             {
                 case MissionStage.Briefing:
-                    _stage = MissionStage.Approach;
+                    _stage = MissionStage.Exploration;
                     break;
 
                 case MissionStage.Approach:
@@ -241,6 +245,28 @@ namespace NEXUS_WindowsForms.Services
         public bool TrustedSignal => _trustedSignal;
         public bool SentProbe => _sentProbe;
         public IReadOnlyList<string> Decisions => _decisions.AsReadOnly();
+
+        public void RecordExplorationAction(string decision, int oxygenChange, int hullChange, int dataChange)
+        {
+            if (_stage != MissionStage.Exploration)
+            {
+                return;
+            }
+
+            _decisions.Add(decision);
+            Oxygen += oxygenChange;
+            HullIntegrity += hullChange;
+            DataRecovered += dataChange;
+            ClampResources();
+        }
+
+        public void CompleteExploration()
+        {
+            if (_stage == MissionStage.Exploration)
+            {
+                _stage = MissionStage.Approach;
+            }
+        }
 
         public void RestoreFromSave(
             string stageKey,

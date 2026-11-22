@@ -1,7 +1,24 @@
 # Archivos temporales de Visual Studio
 .vs/
+**/.vs/
 **/bin/
 **/obj/
+.nexus-nuget-cache/
+.nexus-dotnet-home/
+.nexus-recovery/
+
+# Cachés, resultados y temporales locales
+.cache/
+**/.cache/
+TestResults/
+**/TestResults/
+*.cache
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
 
 # Archivos de usuario de Visual Studio
 *.user
