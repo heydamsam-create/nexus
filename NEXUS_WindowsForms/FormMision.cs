@@ -851,6 +851,28 @@ namespace NEXUS_WindowsForms
                 return;
             }
 
+            if (e.KeyCode == Keys.I)
+            {
+                _explorationView.ToggleInventory();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (_explorationView.InventoryOpen)
+            {
+                if (e.KeyCode is Keys.Up or Keys.W)
+                    _explorationView.MoveInventorySelection(-1);
+                else if (e.KeyCode is Keys.Down or Keys.S)
+                    _explorationView.MoveInventorySelection(1);
+                else if (e.KeyCode is Keys.E or Keys.Enter)
+                    _explorationView.UseSelectedInventoryItem();
+
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             bool firstKeyDown = _heldKeys.Add(e.KeyCode);
             if (e.KeyCode == Keys.E && firstKeyDown)
             {

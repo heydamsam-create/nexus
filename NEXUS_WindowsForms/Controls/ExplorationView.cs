@@ -29,25 +29,50 @@ internal sealed class ExplorationView : Control
 {
     private const int TileSize = 44;
     private const int MapColumns = 38;
-    private const int MapRows = 26;
+    private const int MapRows = 30;
     private const float PlayerRadius = 12f;
     private const float MovementSpeed = 210f;
+    private static readonly int[] ConnectorColumns = { 6, 18, 30 };
 
     private readonly bool[,] _walls = new bool[MapColumns, MapRows];
     private readonly HashSet<string> _unlockedDoors = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly RoomSpec[] Rooms =
+    {
+        new("control_center", "CENTRO DE CONTROL", 2, 2, 10, 8, Color.FromArgb(17, 39, 63), Color.FromArgb(52, 207, 239)),
+        new("communications", "SALA DE COMUNICACIONES", 14, 2, 10, 8, Color.FromArgb(20, 34, 66), Color.FromArgb(105, 141, 255)),
+        new("main_lab", "LABORATORIO PRINCIPAL", 26, 2, 10, 8, Color.FromArgb(15, 52, 57), Color.FromArgb(67, 230, 195)),
+        new("storage", "ALMACÉN DE SUMINISTROS", 2, 20, 10, 8, Color.FromArgb(47, 38, 34), Color.FromArgb(244, 174, 87)),
+        new("research", "ZONA DE INVESTIGACIÓN", 14, 20, 10, 8, Color.FromArgb(38, 31, 58), Color.FromArgb(191, 127, 255)),
+        new("anomaly_chamber", "CÁMARA DE LA ANOMALÍA", 26, 20, 10, 8, Color.FromArgb(43, 24, 54), Color.FromArgb(255, 91, 198))
+    };
+    private static readonly DoorSpec[] Doors =
+    {
+        new("control_access", 6, 9, "control_center", null, null, true),
+        new("communications_access", 18, 9, "communications", "access_card", null),
+        new("laboratory_access", 30, 9, "main_lab", "access_card", null),
+        new("storage_access", 6, 20, "storage", null, null, true),
+        new("research_access", 18, 20, "research", "power_cell", null),
+        new("anomaly_access", 30, 20, "anomaly_chamber", null, "security_console")
+    };
     private readonly RectangleF[] _furniture =
     {
         new(3 * TileSize + 5, 3 * TileSize + 4, 33, 26),
         new(9 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(17 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(24 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(3 * TileSize + 4, 15 * TileSize + 4, 34, 28),
-        new(10 * TileSize + 4, 15 * TileSize + 4, 34, 28),
-        new(17 * TileSize + 4, 15 * TileSize + 4, 34, 28),
-        new(22 * TileSize + 4, 19 * TileSize + 4, 34, 28)
+        new(15 * TileSize + 4, 3 * TileSize + 4, 34, 26),
+        new(21 * TileSize + 4, 3 * TileSize + 4, 34, 26),
+        new(27 * TileSize + 4, 3 * TileSize + 4, 34, 26),
+        new(33 * TileSize + 4, 3 * TileSize + 4, 34, 26),
+        new(3 * TileSize + 4, 22 * TileSize + 4, 34, 28),
+        new(9 * TileSize + 4, 22 * TileSize + 4, 34, 28),
+        new(15 * TileSize + 4, 22 * TileSize + 4, 34, 28),
+        new(21 * TileSize + 4, 22 * TileSize + 4, 34, 28),
+        new(27 * TileSize + 4, 22 * TileSize + 4, 34, 28),
+        new(33 * TileSize + 4, 22 * TileSize + 4, 34, 28)
     };
     private readonly ExplorerSpriteSheet _sprites = new();
-    private readonly Bitmap _floorTile = CreateFloorTexture();
+    private readonly Dictionary<string, Bitmap> _roomFloorTextures = Rooms.ToDictionary(
+        room => room.Id, room => CreateFloorTexture(room.FloorColor), StringComparer.OrdinalIgnoreCase);
+    private readonly Bitmap _floorTile = CreateFloorTexture(Color.FromArgb(13, 27, 43));
     private float _cameraX;
     private float _cameraY;
     private float _animationClock;
@@ -57,16 +82,26 @@ internal sealed class ExplorationView : Control
     private int _oxygen = 100;
     private int _hull = 100;
     private int _data;
+    private bool _inventoryOpen;
+    private int _inventorySelection;
     private string _statusMessage = "Explora la nave. Acércate a un marcador y pulsa E.";
 
     private readonly WorldObject[] _objects =
     {
-        new("ship_log", "REGISTRO DE NAVE", 5, 5, "Recuperar el registro de navegación", 0, 0, 8),
-        new("signal_terminal", "TERMINAL DE SEÑAL", 20, 5, "Descifrar la señal de Eridani-9", 0, 0, 12),
-        new("access_card", "TARJETA DE ACCESO", 5, 17, "Recoger la tarjeta de acceso", 0, 0, 0),
-        new("oxygen_cell", "CÉLULA DE OXÍGENO", 8, 17, "Recoger una célula de oxígeno", 18, 0, 0),
-        new("security_console", "CONSOLA DE SEGURIDAD", 23, 8, "Activar el mecanismo de seguridad", 0, -4, 5),
-        new("anomaly_terminal", "NÚCLEO DE DATOS", 25, 17, "Asegurar los datos del núcleo", 0, 0, 18)
+        new("ship_log", "BITÁCORA DEL PUENTE", 4, 4, "Registro: la nave entró en órbita de Eridani-9.", 0, 0, 3, "document"),
+        new("access_card", "TARJETA DE ACCESO", 4, 23, "Tarjeta de seguridad recogida.", 0, 0, 0, "item"),
+        new("oxygen_cell", "CÉLULA DE OXÍGENO", 7, 23, "Célula de oxígeno añadida al inventario.", 0, 0, 0, "item"),
+        new("toolkit", "KIT DE REPARACIÓN", 9, 25, "Kit de reparación añadido al inventario.", 0, 0, 0, "item"),
+        new("manifest_document", "MANIFIESTO DE CARGA", 4, 26, "El almacén recibió suministros antes de la anomalía.", 0, 0, 2, "document"),
+        new("signal_terminal", "ANTENA DE COMUNICACIONES", 18, 5, "Descifrar la señal repetida de Eridani-9.", 0, 0, 12, "objective"),
+        new("communications_log", "REGISTRO DE TRANSMISIONES", 22, 5, "La señal contiene una respuesta inteligente.", 0, 0, 3, "document"),
+        new("secret_archive", "ARCHIVO OCULTO", 22, 8, "", 0, 0, 8, "secret", "toolkit", "secret_datacube"),
+        new("power_cell", "CÉLULA DE ENERGÍA", 30, 5, "Célula de energía añadida al inventario.", 0, 0, 0, "item"),
+        new("lab_document", "INFORME DE LABORATORIO", 27, 7, "El campo de la anomalía reacciona a pulsos eléctricos.", 0, 0, 3, "document"),
+        new("research_log", "CUADERNO DE INVESTIGACIÓN", 15, 24, "El acceso a la cámara requiere validar el protocolo.", 0, 0, 3, "document"),
+        new("security_console", "CONSOLA DE INVESTIGACIÓN", 18, 25, "", 0, -4, 5, "objective"),
+        new("anomaly_terminal", "NÚCLEO DE DATOS", 30, 24, "Asegurar los datos del núcleo y completar la expedición.", 0, 0, 18, "objective"),
+        new("anomaly_record", "ECO DE LA ANOMALÍA", 33, 25, "El patrón parece responder a la presencia humana.", 0, 0, 5, "document")
     };
 
     public ExplorationSaveState State { get; private set; }
@@ -76,13 +111,12 @@ internal sealed class ExplorationView : Control
     public ExplorationView(ExplorationSaveState? state = null)
     {
         State = state ?? new ExplorationSaveState();
-        State.CollectedItems ??= new List<string>();
-        State.ExploredRooms ??= new List<string>();
-        State.CompletedObjectives ??= new List<string>();
+        NormalizeState();
         State.PlayerX = Math.Clamp(State.PlayerX, TileSize * 2f, (MapColumns - 2) * TileSize);
         State.PlayerY = Math.Clamp(State.PlayerY, TileSize * 2f, (MapRows - 2) * TileSize);
         BuildMap();
         ApplySavedDoorState();
+        DiscoverCurrentRoom();
         BackColor = Color.FromArgb(4, 11, 24);
         ForeColor = NexusTheme.Text;
         DoubleBuffered = true;
@@ -91,10 +125,93 @@ internal sealed class ExplorationView : Control
     }
 
     public string ObjectiveSummary =>
-        $"{ObjectiveMark("signal_terminal")} Descifrar señal\r\n" +
         $"{ObjectiveMark("access_card")} Obtener tarjeta\r\n" +
-        $"{ObjectiveMark("security_console")} Activar mecanismo\r\n" +
+        $"{ObjectiveMark("signal_terminal")} Descifrar señal\r\n" +
+        $"{ObjectiveMark("security_console")} Activar consola\r\n" +
         $"{ObjectiveMark("anomaly_terminal")} Asegurar núcleo";
+
+    public bool InventoryOpen => _inventoryOpen;
+
+    public void ToggleInventory()
+    {
+        _inventoryOpen = !_inventoryOpen;
+        _inventorySelection = Math.Clamp(_inventorySelection, 0, Math.Max(0, GetInventoryItems().Count - 1));
+        Invalidate();
+    }
+
+    public void MoveInventorySelection(int direction)
+    {
+        List<InventoryEntry> items = GetInventoryItems();
+        if (items.Count == 0) return;
+        _inventorySelection = (_inventorySelection + direction + items.Count) % items.Count;
+        Invalidate();
+    }
+
+    public void UseSelectedInventoryItem()
+    {
+        List<InventoryEntry> items = GetInventoryItems();
+        if (items.Count == 0)
+        {
+            _statusMessage = "El inventario está vacío.";
+            Invalidate();
+            return;
+        }
+
+        _inventorySelection = Math.Clamp(_inventorySelection, 0, items.Count - 1);
+        InventoryEntry selected = items[_inventorySelection];
+        switch (selected.Id)
+        {
+            case "oxygen_cell":
+                if (_oxygen >= 100)
+                {
+                    _statusMessage = "El oxígeno ya está al máximo.";
+                    break;
+                }
+                State.UsedItems.Add(selected.Id);
+                _statusMessage = "Célula utilizada: oxígeno restaurado.";
+                ActionCompleted?.Invoke(this, new ExplorationActionEventArgs("Usar célula de oxígeno", 18));
+                StateChanged?.Invoke(this, EventArgs.Empty);
+                break;
+            case "toolkit":
+                if (_hull >= 100)
+                {
+                    _statusMessage = "La integridad del casco ya está al máximo.";
+                    break;
+                }
+                State.UsedItems.Add(selected.Id);
+                _statusMessage = "Kit utilizado: casco reparado.";
+                ActionCompleted?.Invoke(this, new ExplorationActionEventArgs("Usar kit de reparación", 0, 15));
+                StateChanged?.Invoke(this, EventArgs.Empty);
+                break;
+            case "power_cell":
+                _statusMessage = "La célula alimenta el acceso de investigación al acercarte a su puerta.";
+                break;
+            case "access_card":
+                _statusMessage = "La tarjeta se valida automáticamente en las puertas de comunicaciones y laboratorio.";
+                break;
+            case "secret_datacube":
+                if (!State.UsedItems.Contains(selected.Id, StringComparer.OrdinalIgnoreCase))
+                {
+                    State.UsedItems.Add(selected.Id);
+                    _statusMessage = "El archivo secreto añade datos al expediente.";
+                    ActionCompleted?.Invoke(this, new ExplorationActionEventArgs("Analizar archivo secreto", 0, 0, 8));
+                    StateChanged?.Invoke(this, EventArgs.Empty);
+                }
+                break;
+            default:
+                if (IsDocument(selected.Id))
+                {
+                    AddUnique(State.ReadDocuments, selected.Id);
+                    CompleteObjective($"read:{selected.Id}");
+                    _statusMessage = GetDocumentText(selected.Id);
+                    StateChanged?.Invoke(this, EventArgs.Empty);
+                }
+                break;
+        }
+
+        _inventoryOpen = false;
+        Invalidate();
+    }
 
     public bool MovePlayer(int horizontal, int vertical, float elapsedSeconds)
     {
@@ -135,14 +252,14 @@ internal sealed class ExplorationView : Control
     public void RestoreState(ExplorationSaveState state)
     {
         State = state ?? new ExplorationSaveState();
-        State.CollectedItems ??= new List<string>();
-        State.ExploredRooms ??= new List<string>();
-        State.CompletedObjectives ??= new List<string>();
+        NormalizeState();
         State.PlayerX = Math.Clamp(State.PlayerX, TileSize * 2f, (MapColumns - 2) * TileSize);
         State.PlayerY = Math.Clamp(State.PlayerY, TileSize * 2f, (MapRows - 2) * TileSize);
         _unlockedDoors.Clear();
         BuildMap();
         ApplySavedDoorState();
+        DiscoverCurrentRoom();
+        _inventorySelection = 0;
         Invalidate();
     }
 
@@ -150,18 +267,32 @@ internal sealed class ExplorationView : Control
     {
         _interactionTimer = 0.55f;
         _animationClock += 0.03f;
-        WorldObject? nearby = _objects
-            .Where(item => !State.CollectedItems.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
-            .OrderBy(item => DistanceTo(item))
-            .FirstOrDefault();
 
-        float doorDistance = DistanceTo(21, 13);
-        if (doorDistance <= 68f && !_unlockedDoors.Contains("anomaly_door"))
+        DoorSpec? door = Doors
+            .Where(candidate => IsDoorClosed(candidate))
+            .OrderBy(DistanceTo)
+            .FirstOrDefault();
+        if (door is not null && DistanceTo(door) <= 72f)
         {
-            _statusMessage = "PUERTA BLOQUEADA: valida primero la consola de seguridad del laboratorio.";
+            if (!DoorRequirementMet(door))
+            {
+                _statusMessage = DoorRequirementMessage(door);
+                Invalidate();
+                return;
+            }
+
+            UnlockDoor(door);
+            _statusMessage = $"PUERTA DESBLOQUEADA: {GetRoom(door.RoomId).Title}.";
+            StateChanged?.Invoke(this, EventArgs.Empty);
             Invalidate();
             return;
         }
+
+        WorldObject? nearby = _objects
+            .Where(item => !State.CollectedItems.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
+            .Where(item => !item.IsSecret || DistanceTo(item) <= 180f)
+            .OrderBy(item => DistanceTo(item))
+            .FirstOrDefault();
 
         if (nearby is null || DistanceTo(nearby) > 68f)
         {
@@ -170,38 +301,80 @@ internal sealed class ExplorationView : Control
             return;
         }
 
+        if (nearby.RequiredItemId is not null && !HasAvailableItem(nearby.RequiredItemId))
+        {
+            _statusMessage = nearby.RequiredItemId == "toolkit"
+                ? "ARCHIVO SELLADO: necesitas el kit de reparación del almacén."
+                : $"INTERACCIÓN BLOQUEADA: necesitas {GetItemName(nearby.RequiredItemId)}.";
+            Invalidate();
+            return;
+        }
+
         if (nearby.Id == "security_console")
         {
             bool hasTerminal = State.CompletedObjectives.Contains("signal_terminal", StringComparer.OrdinalIgnoreCase);
             bool hasCard = State.CollectedItems.Contains("access_card", StringComparer.OrdinalIgnoreCase);
-            if (!hasTerminal || !hasCard)
+            bool hasPower = HasAvailableItem("power_cell");
+            if (!hasTerminal || !hasCard || !hasPower)
             {
-                _statusMessage = "La consola requiere la señal descifrada y la tarjeta de acceso.";
+                _statusMessage = "La consola requiere la señal, la tarjeta y una célula de energía.";
                 Invalidate();
                 return;
             }
         }
 
         State.CollectedItems.Add(nearby.Id);
+        if (nearby.InventoryId is not null && !State.CollectedItems.Contains(nearby.InventoryId, StringComparer.OrdinalIgnoreCase))
+        {
+            State.CollectedItems.Add(nearby.InventoryId);
+        }
+
+        if (nearby.Kind == "document")
+        {
+            AddUnique(State.ReadDocuments, nearby.Id);
+            CompleteObjective($"read:{nearby.Id}");
+            _statusMessage = GetDocumentText(nearby.Id);
+            ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(nearby.Title,
+                nearby.OxygenChange, nearby.HullChange, nearby.DataChange));
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            Invalidate();
+            return;
+        }
+
+        if (nearby.Kind == "secret")
+        {
+            AddUnique(State.FoundSecrets, nearby.Id);
+            AddUnique(State.CollectedItems, nearby.InventoryId ?? "secret_datacube");
+            CompleteObjective("secret_archive");
+            _statusMessage = "ARCHIVO SECRETO RECUPERADO: se añadió un cubo de datos al inventario.";
+            ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(nearby.Title,
+                nearby.OxygenChange, nearby.HullChange, nearby.DataChange));
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            Invalidate();
+            return;
+        }
+
         if (nearby.Id is "signal_terminal" or "access_card" or "security_console" or "anomaly_terminal")
         {
             CompleteObjective(nearby.Id);
         }
         if (nearby.Id == "security_console")
         {
-            _unlockedDoors.Add("anomaly_door");
-            SetSecurityDoorOpen(true);
+            AddUnique(State.UsedItems, "power_cell");
+            DoorSpec anomalyDoor = Doors.Single(candidate => candidate.Id == "anomaly_access");
+            UnlockDoor(anomalyDoor);
             State.SecurityDoorUnlocked = true;
             CompleteObjective("security_door");
         }
 
         _statusMessage = nearby.Id switch
         {
-            "ship_log" => "Registro de navegación recuperado.",
-            "signal_terminal" => "Señal descifrada. El acceso de seguridad ya puede validarse.",
-            "access_card" => "Tarjeta de acceso recogida.",
-            "oxygen_cell" => "Célula de oxígeno recogida: +18%.",
-            "security_console" => "Mecanismo activado. Se habilitó el control del núcleo.",
+            "signal_terminal" => "Señal descifrada. La investigación puede continuar.",
+            "access_card" => "Tarjeta de acceso recogida. Comunicaciones y laboratorio disponibles.",
+            "oxygen_cell" => "Célula de oxígeno recogida. Abre el inventario para usarla.",
+            "toolkit" => "Kit de reparación recogido. Abre el inventario para usarlo.",
+            "power_cell" => "Célula de energía recogida. Desbloquea la zona de investigación.",
+            "security_console" => "Protocolo validado. La cámara de la anomalía está desbloqueada.",
             "anomaly_terminal" => "Datos del núcleo asegurados. Exploración completada.",
             _ => "Interacción completada."
         };
@@ -236,6 +409,8 @@ internal sealed class ExplorationView : Control
         {
             _sprites.Dispose();
             _floorTile.Dispose();
+            foreach (Bitmap texture in _roomFloorTextures.Values)
+                texture.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -254,6 +429,7 @@ internal sealed class ExplorationView : Control
         graphics.TranslateTransform(-_cameraX, -_cameraY);
 
         DrawMap(graphics);
+        DrawAnomalyField(graphics);
         DrawFurniture(graphics);
         DrawObjects(graphics);
         DrawPlayer(graphics);
@@ -268,19 +444,19 @@ internal sealed class ExplorationView : Control
         for (int y = 0; y < MapRows; y++)
             _walls[x, y] = true;
 
-        CarveRoom(2, 2, 10, 8);
-        CarveRoom(16, 2, 10, 8);
-        CarveRoom(2, 14, 10, 8);
-        CarveRoom(16, 14, 10, 8);
-        CarveRoom(12, 5, 4, 3);
-        CarveRoom(5, 10, 3, 4);
-        CarveRoom(20, 10, 3, 4);
+        foreach (RoomSpec room in Rooms)
+            CarveRoom(room.X, room.Y, room.Width, room.Height);
 
-        // El cierre entre el pasillo de investigación y el núcleo solo se abre tras cumplir requisitos.
-        for (int x = 20; x <= 22; x++)
+        // Corredor central y conectores verticales de las tres salas de cada ala.
+        CarveRoom(2, 13, 34, 3);
+        foreach (int column in ConnectorColumns)
         {
-            _walls[x, 13] = true;
+            CarveRoom(column, 10, 1, 3);
+            CarveRoom(column, 16, 1, 4);
         }
+
+        foreach (DoorSpec door in Doors)
+            _walls[door.X, door.Y] = !IsDoorUnlocked(door);
     }
 
     private void CarveRoom(int x, int y, int width, int height)
@@ -345,7 +521,6 @@ internal sealed class ExplorationView : Control
     private void DrawMap(Graphics graphics)
     {
         using var floorBrush = new SolidBrush(Color.FromArgb(13, 27, 48));
-        using var roomBrush = new SolidBrush(Color.FromArgb(16, 36, 59));
         using var wallBrush = new SolidBrush(Color.FromArgb(24, 46, 69));
         using var gridPen = new Pen(Color.FromArgb(38, 73, 98));
         using var edgePen = new Pen(Color.FromArgb(40, 171, 207), 2);
@@ -356,10 +531,11 @@ internal sealed class ExplorationView : Control
         using var labelBrush = new SolidBrush(Color.FromArgb(125, 172, 199));
 
         graphics.FillRectangle(floorBrush, 0, 0, MapColumns * TileSize, MapRows * TileSize);
-        FillRoom(graphics, roomBrush, 2, 2, 10, 8);
-        FillRoom(graphics, roomBrush, 16, 2, 10, 8);
-        FillRoom(graphics, roomBrush, 2, 14, 10, 8);
-        FillRoom(graphics, roomBrush, 16, 14, 10, 8);
+        foreach (RoomSpec room in Rooms)
+        {
+            using var roomBrush = new SolidBrush(room.FloorColor);
+            FillRoom(graphics, roomBrush, room.X, room.Y, room.Width, room.Height);
+        }
 
         int startX = Math.Max(0, (int)(_cameraX / TileSize) - 1);
         int endX = Math.Min(MapColumns, (int)((_cameraX + ClientSize.Width) / TileSize) + 2);
@@ -381,7 +557,11 @@ internal sealed class ExplorationView : Control
             }
             else
             {
-                graphics.DrawImageUnscaled(_floorTile, tile.Location);
+                string? roomId = GetRoomIdAtTile(x, y);
+                Bitmap floorTexture = _floorTile;
+                if (roomId is not null && _roomFloorTextures.TryGetValue(roomId, out Bitmap? texture) && texture is not null)
+                    floorTexture = texture;
+                graphics.DrawImageUnscaled(floorTexture, tile.Location);
                 graphics.DrawRectangle(gridPen, tile);
                 if ((x + y) % 5 == 0)
                 {
@@ -390,21 +570,23 @@ internal sealed class ExplorationView : Control
             }
         }
 
-        DrawRoomTitle(graphics, font, labelBrush, "PUENTE", 3, 2);
-        DrawRoomTitle(graphics, font, labelBrush, "LABORATORIO", 17, 2);
-        DrawRoomTitle(graphics, font, labelBrush, "ALMACÉN", 3, 14);
-        DrawRoomTitle(graphics, font, labelBrush, "CÁMARA DEL NÚCLEO", 17, 14);
-
-        DrawSecurityDoor(graphics, font);
+        foreach (RoomSpec room in Rooms)
+        {
+            using var roomTitleBrush = new SolidBrush(room.AccentColor);
+            DrawRoomTitle(graphics, font, roomTitleBrush, room.Title, room.X, room.Y);
+        }
+        DrawDoors(graphics, font);
     }
 
-    private static Bitmap CreateFloorTexture()
+    private static Bitmap CreateFloorTexture(Color floorColor)
     {
         var texture = new Bitmap(TileSize, TileSize);
         using Graphics graphics = Graphics.FromImage(texture);
-        graphics.Clear(Color.FromArgb(15, 31, 49));
-        using var seamPen = new Pen(Color.FromArgb(31, 61, 81), 1);
-        using var panelBrush = new SolidBrush(Color.FromArgb(18, 39, 57));
+        graphics.Clear(floorColor);
+        Color panelColor = Color.FromArgb(Math.Min(255, floorColor.R + 3),
+            Math.Min(255, floorColor.G + 5), Math.Min(255, floorColor.B + 7));
+        using var seamPen = new Pen(Color.FromArgb(90, 91, 135, 158), 1);
+        using var panelBrush = new SolidBrush(panelColor);
         using var glintPen = new Pen(Color.FromArgb(20, 71, 133, 157), 1);
         graphics.DrawRectangle(seamPen, 2, 2, TileSize - 5, TileSize - 5);
         graphics.FillRectangle(panelBrush, 7, 7, TileSize - 14, TileSize - 14);
@@ -416,23 +598,27 @@ internal sealed class ExplorationView : Control
         return texture;
     }
 
-    private void DrawSecurityDoor(Graphics graphics, Font font)
+    private void DrawDoors(Graphics graphics, Font font)
     {
-        Rectangle door = new(20 * TileSize, 13 * TileSize, 3 * TileSize, TileSize);
-        bool open = _unlockedDoors.Contains("anomaly_door");
-        using var doorBrush = new SolidBrush(open ? Color.FromArgb(21, 93, 82) : Color.FromArgb(50, 39, 54));
-        using var doorPen = new Pen(open ? Color.FromArgb(65, 226, 185) : Color.FromArgb(241, 151, 85), 2);
-        using var insetBrush = new SolidBrush(open ? Color.FromArgb(30, 157, 128) : Color.FromArgb(107, 66, 62));
-        graphics.FillRectangle(doorBrush, door);
-        graphics.DrawRectangle(doorPen, door);
-        for (int panel = 0; panel < 3; panel++)
+        foreach (DoorSpec specification in Doors)
         {
-            Rectangle inset = new(door.X + 10 + panel * 43, door.Y + 6, 34, door.Height - 12);
+            bool open = IsDoorUnlocked(specification);
+            Rectangle door = new(specification.X * TileSize, specification.Y * TileSize, TileSize, TileSize);
+            Color doorColor = open ? Color.FromArgb(29, 105, 91) : Color.FromArgb(90, 57, 53);
+            using var doorBrush = new SolidBrush(doorColor);
+            using var doorPen = new Pen(open ? Color.FromArgb(65, 226, 185) : Color.FromArgb(241, 151, 85), 2);
+            using var insetBrush = new SolidBrush(open ? Color.FromArgb(37, 154, 127) : Color.FromArgb(120, 73, 63));
+            graphics.FillRectangle(doorBrush, door);
+            graphics.DrawRectangle(doorPen, door);
+            Rectangle inset = new(door.X + 7, door.Y + 6, door.Width - 14, door.Height - 12);
             graphics.FillRectangle(insetBrush, inset);
             graphics.DrawRectangle(doorPen, inset);
+            if (DistanceTo(specification) <= 110f)
+            {
+                string marker = open ? "ABIERTO" : GetDoorShortLabel(specification);
+                graphics.DrawString(marker, font, Brushes.White, door.X - 15, door.Y - 20);
+            }
         }
-        graphics.DrawString(open ? "ACCESO DESBLOQUEADO" : "CIERRE DE SEGURIDAD", font,
-            Brushes.White, door.X + 15, door.Y + 13);
     }
 
     private void DrawFurniture(Graphics graphics)
@@ -440,20 +626,67 @@ internal sealed class ExplorationView : Control
         using var shellBrush = new SolidBrush(Color.FromArgb(30, 54, 76));
         using var insetBrush = new SolidBrush(Color.FromArgb(8, 21, 35));
         using var edgePen = new Pen(Color.FromArgb(63, 111, 138), 1.4f);
-        using var glowPen = new Pen(Color.FromArgb(130, 40, 214, 244), 2);
         using var amberBrush = new SolidBrush(Color.FromArgb(232, 166, 75));
+        int fixtureIndex = 0;
         foreach (RectangleF piece in _furniture)
         {
             Rectangle rect = Rectangle.Round(piece);
+            int roomTileX = Math.Clamp((int)(rect.X / TileSize), 0, MapColumns - 1);
+            int roomTileY = Math.Clamp((int)(rect.Y / TileSize), 0, MapRows - 1);
+            RoomSpec room = GetRoomForTile(roomTileX, roomTileY) ?? Rooms[0];
+            using var roomGlow = new Pen(Color.FromArgb(175, room.AccentColor), 2);
             graphics.FillRectangle(shellBrush, rect);
             graphics.DrawRectangle(edgePen, rect);
             graphics.FillRectangle(insetBrush, rect.X + 5, rect.Y + 5, rect.Width - 10, rect.Height - 9);
-            graphics.DrawLine(glowPen, rect.X + 7, rect.Y + 7, rect.Right - 7, rect.Y + 7);
+            graphics.DrawLine(roomGlow, rect.X + 7, rect.Y + 7, rect.Right - 7, rect.Y + 7);
+            if (fixtureIndex % 3 == 0)
+            {
+                graphics.FillRectangle(Brushes.Cyan, rect.X + 8, rect.Y + 10, rect.Width - 16, 7);
+                graphics.DrawLine(Pens.White, rect.X + 11, rect.Y + 13, rect.Right - 11, rect.Y + 13);
+                graphics.DrawLine(edgePen, rect.X + 8, rect.Y + 21, rect.Right - 8, rect.Y + 21);
+            }
+            else if (fixtureIndex % 3 == 1)
+            {
+                for (int shelf = 1; shelf < 4; shelf++)
+                    graphics.DrawLine(edgePen, rect.X + 7, rect.Y + shelf * 5, rect.Right - 7, rect.Y + shelf * 5);
+                graphics.DrawLine(roomGlow, rect.X + rect.Width / 2, rect.Y + 5,
+                    rect.X + rect.Width / 2, rect.Bottom - 5);
+            }
+            else
+            {
+                using var equipmentGlass = new SolidBrush(Color.FromArgb(95, room.AccentColor));
+                graphics.FillEllipse(equipmentGlass, rect.X + 9, rect.Y + 8, rect.Width - 18, rect.Height - 14);
+                graphics.DrawEllipse(roomGlow, rect.X + 9, rect.Y + 8, rect.Width - 18, rect.Height - 14);
+            }
+
             for (int lamp = 0; lamp < 3; lamp++)
             {
                 Brush light = lamp == 0 ? amberBrush : Brushes.Cyan;
                 graphics.FillEllipse(light, rect.X + 8 + lamp * 7, rect.Bottom - 7, 3, 3);
             }
+            fixtureIndex++;
+        }
+    }
+
+    private void DrawAnomalyField(Graphics graphics)
+    {
+        float centerX = 31 * TileSize + TileSize / 2f;
+        float centerY = 23 * TileSize + TileSize / 2f;
+        float pulse = 3f + MathF.Sin(_animationClock * 1.8f) * 3f;
+        using var fieldBrush = new SolidBrush(Color.FromArgb(27, 233, 71, 209));
+        using var outerPen = new Pen(Color.FromArgb(96, 245, 88, 220), 2);
+        using var innerPen = new Pen(Color.FromArgb(160, 92, 226, 255), 1.5f);
+        graphics.FillEllipse(fieldBrush, centerX - 42 - pulse, centerY - 42 - pulse,
+            84 + pulse * 2, 84 + pulse * 2);
+        graphics.DrawEllipse(outerPen, centerX - 36 - pulse, centerY - 36 - pulse,
+            72 + pulse * 2, 72 + pulse * 2);
+        graphics.DrawEllipse(innerPen, centerX - 22, centerY - 22, 44, 44);
+        for (int ray = 0; ray < 8; ray++)
+        {
+            float angle = ray * MathF.PI / 4;
+            graphics.DrawLine(innerPen,
+                centerX + MathF.Cos(angle) * 24, centerY + MathF.Sin(angle) * 24,
+                centerX + MathF.Cos(angle) * 34, centerY + MathF.Sin(angle) * 34);
         }
     }
 
@@ -483,22 +716,21 @@ internal sealed class ExplorationView : Control
 
             float x = item.X * TileSize + TileSize / 2f;
             float y = item.Y * TileSize + TileSize / 2f;
-            bool objective = item.Id is "signal_terminal" or "access_card" or "security_console" or "anomaly_terminal";
+            if (item.IsSecret && DistanceTo(item) > 180f)
+                continue;
+
+            bool objective = item.Kind == "objective" || item.Id == "access_card";
             RectangleF glow = new(x - 17 - pulse, y - 17 - pulse, 34 + pulse * 2, 34 + pulse * 2);
             graphics.FillEllipse(objectGlow, glow);
             DrawInteractable(graphics, item.Id, x, y, objective ? markerBrush : doneBrush, markerPen);
-            graphics.DrawString(item.Title, labelFont, labelBrush, x - 52, y + 26);
+            if (!item.IsSecret || DistanceTo(item) <= 100f)
+                graphics.DrawString(item.Title, labelFont, labelBrush, x - 58, y + 26);
             if (DistanceTo(item) <= 94f)
             {
                 graphics.DrawEllipse(interactionPen, x - 21, y - 21, 42, 42);
             }
         }
 
-        if (_unlockedDoors.Contains("anomaly_door"))
-        {
-            graphics.DrawString("ACCESO ABIERTO", labelFont, Brushes.White,
-                20 * TileSize + 28, 13 * TileSize + 27);
-        }
     }
 
     private static void DrawInteractable(Graphics graphics, string id, float x, float y, Brush markerBrush, Pen markerPen)
@@ -519,11 +751,38 @@ internal sealed class ExplorationView : Control
                 graphics.FillRectangle(shell, x - 3, y + 12, 6, 4);
                 break;
             case "ship_log":
+            case "manifest_document":
+            case "communications_log":
+            case "lab_document":
+            case "research_log":
+            case "anomaly_record":
                 graphics.FillRectangle(shell, x - 12, y - 9, 24, 18);
                 graphics.DrawRectangle(trim, x - 12, y - 9, 24, 18);
                 graphics.FillRectangle(markerBrush, x - 8, y - 5, 16, 10);
                 graphics.DrawLine(Pens.White, x - 5, y - 2, x + 4, y - 2);
                 graphics.DrawLine(Pens.White, x - 5, y + 1, x + 5, y + 1);
+                break;
+            case "secret_archive":
+                graphics.FillRectangle(shell, x - 11, y - 11, 22, 22);
+                graphics.DrawRectangle(trim, x - 11, y - 11, 22, 22);
+                graphics.FillEllipse(markerBrush, x - 5, y - 5, 10, 10);
+                break;
+            case "access_card":
+                graphics.FillRectangle(markerBrush, x - 12, y - 7, 24, 14);
+                graphics.DrawRectangle(markerPen, x - 12, y - 7, 24, 14);
+                graphics.FillRectangle(shell, x + 2, y - 3, 6, 2);
+                break;
+            case "oxygen_cell":
+            case "power_cell":
+                graphics.FillRectangle(shell, x - 8, y - 12, 16, 24);
+                graphics.DrawRectangle(markerPen, x - 8, y - 12, 16, 24);
+                graphics.FillRectangle(markerBrush, x - 4, y - 7, 8, 14);
+                break;
+            case "toolkit":
+                graphics.FillRectangle(shell, x - 11, y - 8, 22, 16);
+                graphics.DrawRectangle(markerPen, x - 11, y - 8, 22, 16);
+                graphics.DrawLine(trim, x - 5, y - 8, x - 2, y - 12);
+                graphics.DrawLine(trim, x + 5, y - 8, x + 2, y - 12);
                 break;
             default:
                 graphics.FillEllipse(markerBrush, x - 9, y - 9, 18, 18);
@@ -568,6 +827,10 @@ internal sealed class ExplorationView : Control
         graphics.DrawRectangle(borderPen, help);
         graphics.DrawString("W A S D / FLECHAS: MOVER     E: INTERACTUAR     " + prompt,
             textFont, textBrush, help.X + 8, help.Y + 4);
+
+        graphics.DrawString("I: INVENTARIO", textFont, titleBrush, help.Right - 95, help.Y + 4);
+        if (_inventoryOpen)
+            DrawInventory(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
     }
 
     private void DrawGameHud(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
@@ -587,20 +850,25 @@ internal sealed class ExplorationView : Control
         DrawMiniBar(graphics, x + 8, 62, "CASCO", _hull, Color.FromArgb(86, 177, 255), textFont, textBrush);
         DrawMiniBar(graphics, x + 8, 82, "DATOS", _data, Color.FromArgb(96, 236, 187), textFont, textBrush);
 
-        int completed = State.CompletedObjectives.Count(id => id is "signal_terminal" or "access_card" or "security_console" or "anomaly_terminal");
-        string objective = completed switch
-        {
-            0 => "OBJ: DESCIFRAR SEÑAL",
-            1 => State.CollectedItems.Contains("access_card") ? "OBJ: ACTIVAR CONSOLA" : "OBJ: OBTENER TARJETA",
-            2 => "OBJ: ACTIVAR MECANISMO",
-            3 => "OBJ: ASEGURAR NÚCLEO",
-            _ => "OBJ: EXPLORACIÓN COMPLETA"
-        };
+        string objective = State.CompletedObjectives.Contains("anomaly_terminal", StringComparer.OrdinalIgnoreCase)
+            ? "OBJ: EXPLORACIÓN COMPLETA"
+            : State.CompletedObjectives.Contains("security_console", StringComparer.OrdinalIgnoreCase)
+                ? "OBJ: ASEGURAR NÚCLEO"
+                : !State.CompletedObjectives.Contains("signal_terminal", StringComparer.OrdinalIgnoreCase)
+                    ? "OBJ: DESCIFRAR SEÑAL"
+                    : !State.CollectedItems.Contains("access_card", StringComparer.OrdinalIgnoreCase)
+                        ? "OBJ: OBTENER TARJETA"
+                        : !HasAvailableItem("power_cell")
+                            ? "OBJ: CÉLULA EN LABORATORIO"
+                            : "OBJ: ACTIVAR CONSOLA";
         graphics.DrawString(objective, textFont, textBrush, x + 8, 106);
-        string inventory = State.CollectedItems.Count == 0
+        List<InventoryEntry> inventoryItems = GetInventoryItems();
+        string inventory = inventoryItems.Count == 0
             ? "INV: VACÍO"
-            : $"INV: {State.CollectedItems.Count} OBJ.  •  {(State.SecurityDoorUnlocked ? "TARJETA USADA" : State.CollectedItems.Contains("access_card") ? "TARJETA" : "EQUIPO")}";
+            : $"INV: {inventoryItems[0].ShortName}{(inventoryItems.Count > 1 ? $" +{inventoryItems.Count - 1}" : string.Empty)}";
         graphics.DrawString(inventory, textFont, textBrush, x + 8, 126);
+        int discoveredRooms = Rooms.Count(room => State.ExploredRooms.Contains(room.Id, StringComparer.OrdinalIgnoreCase));
+        graphics.DrawString($"ZONAS: {discoveredRooms}/{Rooms.Length}", textFont, titleBrush, x + 8, 145);
 
         var map = new Rectangle(ClientSize.Width - 176, 176, 164, 105);
         graphics.FillRectangle(panelBrush, map);
@@ -629,53 +897,186 @@ internal sealed class ExplorationView : Control
         using var roomBrush = new SolidBrush(Color.FromArgb(48, 88, 111));
         using var hallBrush = new SolidBrush(Color.FromArgb(23, 46, 64));
         using var playerBrush = new SolidBrush(Color.FromArgb(75, 231, 255));
-        for (int cx = 0; cx < MapColumns; cx++)
-        for (int cy = 0; cy < MapRows; cy++)
+        using var discoveredPen = new Pen(Color.FromArgb(92, 169, 205), 1);
+        foreach (RoomSpec room in Rooms)
         {
-            if (_walls[cx, cy]) continue;
-            graphics.FillRectangle((cx is >= 2 and < 12 && cy is >= 2 and < 10) ||
-                (cx is >= 16 and < 26 && cy is >= 2 and < 10) ||
-                (cx is >= 2 and < 12 && cy is >= 14 and < 22) ||
-                (cx is >= 16 and < 26 && cy is >= 14 and < 22) ? roomBrush : hallBrush,
-                mapX + cx * scaleX, mapY + cy * scaleY, Math.Max(1, scaleX), Math.Max(1, scaleY));
+            if (!State.ExploredRooms.Contains(room.Id, StringComparer.OrdinalIgnoreCase)) continue;
+            var roomRect = new Rectangle((int)(mapX + room.X * scaleX), (int)(mapY + room.Y * scaleY),
+                Math.Max(2, (int)(room.Width * scaleX)), Math.Max(2, (int)(room.Height * scaleY)));
+            graphics.FillRectangle(roomBrush, roomRect);
+            graphics.DrawRectangle(discoveredPen, roomRect);
         }
+
+        if (State.ExploredRooms.Contains("central_corridor", StringComparer.OrdinalIgnoreCase))
+        {
+            graphics.FillRectangle(hallBrush, mapX + 2 * scaleX, mapY + 13 * scaleY,
+                34 * scaleX, 3 * scaleY);
+            foreach (int column in ConnectorColumns)
+            {
+                graphics.FillRectangle(hallBrush, mapX + column * scaleX, mapY + 10 * scaleY,
+                    scaleX, 3 * scaleY);
+                graphics.FillRectangle(hallBrush, mapX + column * scaleX, mapY + 16 * scaleY,
+                    scaleX, 4 * scaleY);
+            }
+        }
+
+        foreach (DoorSpec door in Doors)
+        {
+            bool known = State.ExploredRooms.Contains(door.RoomId, StringComparer.OrdinalIgnoreCase) ||
+                State.ExploredRooms.Contains("central_corridor", StringComparer.OrdinalIgnoreCase);
+            if (!known) continue;
+            using var doorBrush = new SolidBrush(IsDoorUnlocked(door)
+                ? Color.FromArgb(73, 231, 195)
+                : Color.FromArgb(255, 170, 86));
+            graphics.FillRectangle(doorBrush, mapX + door.X * scaleX - 2,
+                mapY + door.Y * scaleY - 2, 5, 5);
+        }
+
+        foreach (WorldObject objective in _objects.Where(item => item.Kind == "objective" ||
+                     item.Id is "access_card" or "power_cell"))
+        {
+            string roomId = GetRoomIdAtTile(objective.X, objective.Y) ?? string.Empty;
+            if (!State.ExploredRooms.Contains(roomId, StringComparer.OrdinalIgnoreCase) ||
+                State.CollectedItems.Contains(objective.Id, StringComparer.OrdinalIgnoreCase)) continue;
+            graphics.FillEllipse(Brushes.Cyan, mapX + objective.X * scaleX - 1.5f,
+                mapY + objective.Y * scaleY - 1.5f, 4, 4);
+        }
+
         graphics.FillEllipse(playerBrush, mapX + State.PlayerX / TileSize * scaleX - 3,
             mapY + State.PlayerY / TileSize * scaleY - 3, 6, 6);
     }
 
+    private void DrawInventory(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
+        Font textFont, Brush titleBrush, Brush textBrush)
+    {
+        var panel = new Rectangle(ClientSize.Width / 2 - 185, ClientSize.Height / 2 - 125, 370, 250);
+        graphics.FillRectangle(panelBrush, panel);
+        graphics.DrawRectangle(borderPen, panel);
+        graphics.DrawString("INVENTARIO DE EXPLORACIÓN", titleFont, titleBrush, panel.X + 14, panel.Y + 12);
+        List<InventoryEntry> items = GetInventoryItems();
+        if (items.Count == 0)
+        {
+            graphics.DrawString("No llevas objetos. Explora las salas y pulsa E junto a los marcadores.",
+                textFont, textBrush, new RectangleF(panel.X + 16, panel.Y + 54, panel.Width - 32, 50));
+        }
+        else
+        {
+            int firstVisible = Math.Clamp(_inventorySelection - 3, 0, Math.Max(0, items.Count - 7));
+            for (int row = 0; row < 7 && firstVisible + row < items.Count; row++)
+            {
+                int index = firstVisible + row;
+                InventoryEntry item = items[index];
+                int y = panel.Y + 42 + row * 22;
+                bool selected = index == _inventorySelection;
+                if (selected)
+                {
+                    using var selectionBrush = new SolidBrush(Color.FromArgb(72, 31, 135, 170));
+                    graphics.FillRectangle(selectionBrush, panel.X + 10, y - 2, panel.Width - 20, 21);
+                }
+                string status = State.ReadDocuments.Contains(item.Id, StringComparer.OrdinalIgnoreCase) ? "LEÍDO" : item.Category;
+                graphics.DrawString($"{(selected ? "›" : "•")}  {item.Name}", textFont,
+                    selected ? titleBrush : textBrush, panel.X + 16, y);
+                graphics.DrawString(status, textFont, textBrush, panel.Right - 82, y);
+            }
+        }
+
+        graphics.DrawString("I CERRAR     ↑ / ↓ SELECCIONAR     E USAR / LEER",
+            textFont, textBrush, panel.X + 14, panel.Bottom - 24);
+    }
+
+    private List<InventoryEntry> GetInventoryItems()
+    {
+        string[] order =
+        {
+            "access_card", "power_cell", "oxygen_cell", "toolkit", "secret_datacube",
+            "ship_log", "manifest_document", "communications_log", "lab_document", "research_log", "anomaly_record"
+        };
+        return order
+            .Where(id => State.CollectedItems.Contains(id, StringComparer.OrdinalIgnoreCase))
+            .Where(id => !State.UsedItems.Contains(id, StringComparer.OrdinalIgnoreCase))
+            .Select(id => new InventoryEntry(id, GetItemName(id), GetItemCategory(id)))
+            .ToList();
+    }
+
+    private static string GetItemName(string id) => id switch
+    {
+        "access_card" => "Tarjeta de acceso",
+        "power_cell" => "Célula de energía",
+        "oxygen_cell" => "Célula de oxígeno",
+        "toolkit" => "Kit de reparación",
+        "secret_datacube" => "Cubo de datos secreto",
+        "ship_log" => "Bitácora del puente",
+        "manifest_document" => "Manifiesto de carga",
+        "communications_log" => "Registro de transmisiones",
+        "lab_document" => "Informe de laboratorio",
+        "research_log" => "Cuaderno de investigación",
+        "anomaly_record" => "Eco de la anomalía",
+        _ => id
+    };
+
+    private static string GetItemCategory(string id) => id switch
+    {
+        "access_card" => "ACCESO",
+        "power_cell" or "oxygen_cell" => "ENERGÍA",
+        "toolkit" => "HERRAMIENTA",
+        "secret_datacube" => "ESPECIAL",
+        _ => "DOCUMENTO"
+    };
+
+    private static bool IsDocument(string id) => id is "ship_log" or "manifest_document" or
+        "communications_log" or "lab_document" or "research_log" or "anomaly_record";
+
+    private static string GetDocumentText(string id) => id switch
+    {
+        "ship_log" => "BITÁCORA: NEXUS entró en órbita de Eridani-9 tras recibir una señal persistente.",
+        "manifest_document" => "MANIFIESTO: el almacén recibió células, herramientas y tarjetas antes del incidente.",
+        "communications_log" => "TRANSMISIÓN: la señal cambia cuando la nave responde. No es un eco automático.",
+        "lab_document" => "INFORME: el campo de la anomalía reacciona a pulsos eléctricos controlados.",
+        "research_log" => "INVESTIGACIÓN: la consola debe sincronizar la señal y mantener energía estable.",
+        "anomaly_record" => "ECO: el patrón luminoso parece responder a la presencia de la tripulación.",
+        _ => "Documento sin datos legibles."
+    };
+
     private string GetPrompt()
     {
+        DoorSpec? lockedDoor = Doors
+            .Where(IsDoorClosed)
+            .OrderBy(DistanceTo)
+            .FirstOrDefault();
+        if (lockedDoor is not null && DistanceTo(lockedDoor) <= 78f)
+            return $"E: ABRIR {GetRoom(lockedDoor.RoomId).Title}";
+
         WorldObject? nearby = _objects
             .Where(item => !State.CollectedItems.Contains(item.Id, StringComparer.OrdinalIgnoreCase))
+            .Where(item => !item.IsSecret || DistanceTo(item) <= 180f)
             .OrderBy(DistanceTo)
             .FirstOrDefault();
         if (nearby is not null && DistanceTo(nearby) <= 68f)
         {
             return $"E: {nearby.Title}";
         }
-        return DistanceTo(21, 13) <= 68f && !_unlockedDoors.Contains("anomaly_door")
-            ? "E: PUERTA DE SEGURIDAD"
-            : string.Empty;
+        return string.Empty;
     }
 
     private string CurrentRoomName()
     {
         int tileX = (int)(State.PlayerX / TileSize);
         int tileY = (int)(State.PlayerY / TileSize);
-        if (tileX is >= 2 and < 12 && tileY is >= 2 and < 10) return "PUENTE DE NEXUS";
-        if (tileX is >= 16 and < 26 && tileY is >= 2 and < 10) return "LABORATORIO DE SEÑALES";
-        if (tileX is >= 2 and < 12 && tileY is >= 14 and < 22) return "ALMACÉN";
-        if (tileX is >= 16 and < 26 && tileY is >= 14 and < 22) return "CÁMARA DEL NÚCLEO";
-        return "PASILLO DE SERVICIO";
+        string? roomId = GetRoomIdAtTile(tileX, tileY);
+        return roomId == "central_corridor" ? "CORREDOR CENTRAL" :
+            roomId is null ? "INSTALACIÓN NEXUS" : GetRoom(roomId).Title;
     }
 
     private bool DiscoverCurrentRoom()
     {
-        string roomId = CurrentRoomName();
+        string? roomId = GetRoomIdAtTile((int)(State.PlayerX / TileSize), (int)(State.PlayerY / TileSize));
+        if (roomId is null) return false;
         if (!State.ExploredRooms.Contains(roomId, StringComparer.OrdinalIgnoreCase))
         {
             State.ExploredRooms.Add(roomId);
-            _statusMessage = $"Nueva zona cartografiada: {roomId}.";
+            _statusMessage = roomId == "central_corridor"
+                ? "CORREDOR CENTRAL CARTOGRAFIADO. Las salidas aparecen en el minimapa."
+                : $"Nueva zona cartografiada: {GetRoom(roomId).Title}.";
             return true;
         }
 
@@ -683,6 +1084,8 @@ internal sealed class ExplorationView : Control
     }
 
     private float DistanceTo(WorldObject item) => DistanceTo(item.X, item.Y);
+
+    private float DistanceTo(DoorSpec door) => DistanceTo(door.X, door.Y);
 
     private float DistanceTo(int tileX, int tileY)
     {
@@ -704,23 +1107,167 @@ internal sealed class ExplorationView : Control
         }
     }
 
-    private void SetSecurityDoorOpen(bool isOpen)
+    private bool IsDoorUnlocked(DoorSpec door)
     {
-        for (int x = 20; x <= 22; x++)
-        {
-            _walls[x, 13] = !isOpen;
-        }
+        if (door.StartsUnlocked || _unlockedDoors.Contains(door.Id) ||
+            State.UnlockedDoors.Contains(door.Id, StringComparer.OrdinalIgnoreCase)) return true;
+        return door.Id == "anomaly_access" && State.SecurityDoorUnlocked;
     }
 
     private void ApplySavedDoorState()
     {
-        if (State.SecurityDoorUnlocked)
+        foreach (DoorSpec door in Doors)
         {
-            _unlockedDoors.Add("anomaly_door");
-            SetSecurityDoorOpen(true);
+            if (!IsDoorUnlocked(door)) continue;
+            AddUnique(State.UnlockedDoors, door.Id);
+            _unlockedDoors.Add(door.Id);
+            _walls[door.X, door.Y] = false;
+        }
+        State.SecurityDoorUnlocked = IsDoorUnlocked(Doors.Single(door => door.Id == "anomaly_access"));
+    }
+
+    private void UnlockDoor(DoorSpec door)
+    {
+        AddUnique(State.UnlockedDoors, door.Id);
+        _unlockedDoors.Add(door.Id);
+        _walls[door.X, door.Y] = false;
+        if (door.Id == "anomaly_access") State.SecurityDoorUnlocked = true;
+    }
+
+    private bool IsDoorClosed(DoorSpec door) => !IsDoorUnlocked(door);
+
+    private bool DoorRequirementMet(DoorSpec door)
+    {
+        bool itemRequirement = door.RequiredItemId is null || HasAvailableItem(door.RequiredItemId);
+        bool objectiveRequirement = door.RequiredObjectiveId is null ||
+            State.CompletedObjectives.Contains(door.RequiredObjectiveId, StringComparer.OrdinalIgnoreCase);
+        return itemRequirement && objectiveRequirement;
+    }
+
+    private bool HasAvailableItem(string itemId) =>
+        State.CollectedItems.Contains(itemId, StringComparer.OrdinalIgnoreCase) &&
+        !State.UsedItems.Contains(itemId, StringComparer.OrdinalIgnoreCase);
+
+    private string DoorRequirementMessage(DoorSpec door)
+    {
+        if (door.RequiredItemId is "access_card")
+            return "PUERTA BLOQUEADA: busca la tarjeta de acceso en el almacén.";
+        if (door.RequiredItemId is "power_cell")
+            return "PUERTA BLOQUEADA: célula de energía requerida. Busca el laboratorio principal; se abre con la tarjeta del almacén.";
+        if (door.RequiredObjectiveId is "security_console")
+            return "PUERTA BLOQUEADA: valida la consola de investigación primero.";
+        return "PUERTA BLOQUEADA: faltan credenciales para este acceso.";
+    }
+
+    private static string GetDoorShortLabel(DoorSpec door) => door.RequiredItemId switch
+    {
+        "access_card" => "TARJETA",
+        "power_cell" => "ENERGÍA",
+        _ when door.RequiredObjectiveId is not null => "SEGURIDAD",
+        _ => "ACCESO"
+    };
+
+    private static RoomSpec GetRoom(string id) => Rooms.First(room => room.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    private static RoomSpec? GetRoomForTile(int x, int y) => Rooms.FirstOrDefault(room =>
+        x >= room.X && x < room.X + room.Width && y >= room.Y && y < room.Y + room.Height);
+
+    private static string? GetRoomIdAtTile(int x, int y)
+    {
+        RoomSpec? room = GetRoomForTile(x, y);
+        if (room is not null) return room.Id;
+        if (y is >= 13 and <= 15 && x is >= 2 and < 36) return "central_corridor";
+        foreach (int column in ConnectorColumns)
+        {
+            if (x != column) continue;
+            DoorSpec? connector = Doors.FirstOrDefault(door => door.X == column &&
+                ((y is >= 9 and <= 12 && door.Y == 9) || (y is >= 16 and <= 20 && door.Y == 20)));
+            if (connector is not null) return connector.RoomId;
+        }
+        return null;
+    }
+
+    private void NormalizeState()
+    {
+        State.CollectedItems ??= new List<string>();
+        State.ExploredRooms ??= new List<string>();
+        State.CompletedObjectives ??= new List<string>();
+        State.UnlockedDoors ??= new List<string>();
+        State.UsedItems ??= new List<string>();
+        State.ReadDocuments ??= new List<string>();
+        State.FoundSecrets ??= new List<string>();
+
+        // Translate names and the former security-door flag from earlier saved JSON snapshots.
+        var legacyRooms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PUENTE DE NEXUS"] = "control_center",
+            ["LABORATORIO DE SEÑALES"] = "communications",
+            ["ALMACÉN"] = "storage",
+            ["CÁMARA DEL NÚCLEO"] = "anomaly_chamber",
+            ["PASILLO DE SERVICIO"] = "central_corridor"
+        };
+        bool isLegacySnapshot = State.ExploredRooms.Any(legacyRooms.ContainsKey);
+        for (int index = 0; index < State.ExploredRooms.Count; index++)
+        {
+            string priorName = State.ExploredRooms[index];
+            if (legacyRooms.TryGetValue(priorName, out string? currentId))
+                State.ExploredRooms[index] = currentId;
+        }
+
+        for (int index = 0; index < State.UnlockedDoors.Count; index++)
+        {
+            if (State.UnlockedDoors[index].Equals("anomaly_door", StringComparison.OrdinalIgnoreCase))
+                State.UnlockedDoors[index] = "anomaly_access";
+        }
+
+        bool oldFinalDoorUnlocked = State.SecurityDoorUnlocked ||
+            State.CompletedObjectives.Contains("security_console", StringComparer.OrdinalIgnoreCase);
+        if (oldFinalDoorUnlocked)
+        {
+            AddUnique(State.UnlockedDoors, "anomaly_access");
+            State.SecurityDoorUnlocked = true;
+        }
+
+        // Older maps placed the lower-right core at x=16..25 / y=14..21.
+        if (isLegacySnapshot && State.ExploredRooms.Contains("anomaly_chamber", StringComparer.OrdinalIgnoreCase) &&
+            State.PlayerX / TileSize is >= 16 and < 26 && State.PlayerY / TileSize is >= 14 and < 22)
+        {
+            State.PlayerX += 10 * TileSize;
+            State.PlayerY += 6 * TileSize;
+        }
+        else if (isLegacySnapshot && State.ExploredRooms.Contains("storage", StringComparer.OrdinalIgnoreCase) &&
+                 State.PlayerX / TileSize is >= 2 and < 12 && State.PlayerY / TileSize is >= 14 and < 22)
+        {
+            State.PlayerY += 6 * TileSize;
+        }
+        else if (isLegacySnapshot && State.ExploredRooms.Contains("communications", StringComparer.OrdinalIgnoreCase) &&
+                 State.PlayerX / TileSize is >= 16 and < 26 && State.PlayerY / TileSize is >= 2 and < 10)
+        {
+            State.PlayerX -= 2 * TileSize;
         }
     }
 
+    private static void AddUnique(List<string> values, string value)
+    {
+        if (!values.Contains(value, StringComparer.OrdinalIgnoreCase))
+            values.Add(value);
+    }
+
+    private sealed record RoomSpec(string Id, string Title, int X, int Y, int Width, int Height,
+        Color FloorColor, Color AccentColor);
+
+    private sealed record DoorSpec(string Id, int X, int Y, string RoomId, string? RequiredItemId,
+        string? RequiredObjectiveId, bool StartsUnlocked = false);
+
+    private sealed record InventoryEntry(string Id, string Name, string Category)
+    {
+        public string ShortName => Name.Length > 18 ? Name[..18] : Name;
+    }
+
     private sealed record WorldObject(string Id, string Title, int X, int Y, string Objective,
-        int OxygenChange, int HullChange, int DataChange);
+        int OxygenChange, int HullChange, int DataChange, string Kind = "item",
+        string? RequiredItemId = null, string? InventoryId = null)
+    {
+        public bool IsSecret => Kind == "secret";
+    }
 }

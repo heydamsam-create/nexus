@@ -10,5 +10,11 @@ internal sealed class ExplorationSaveState
     public List<string> CollectedItems { get; set; } = new();
     public List<string> ExploredRooms { get; set; } = new();
     public List<string> CompletedObjectives { get; set; } = new();
+    public List<string> UnlockedDoors { get; set; } = new();
+    public List<string> UsedItems { get; set; } = new();
+    public List<string> ReadDocuments { get; set; } = new();
+    public List<string> FoundSecrets { get; set; } = new();
+
+    // Se conserva para poder leer y escribir partidas guardadas por la versión anterior.
     public bool SecurityDoorUnlocked { get; set; }
 }
