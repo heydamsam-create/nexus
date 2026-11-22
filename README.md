@@ -1,106 +1,119 @@
 # NEXUS — Exploración de Eridani-9
 
-NEXUS es un proyecto académico de exploración espacial con dos implementaciones C# en el repositorio: la aplicación gráfica Windows Forms, que es el proyecto principal de esta documentación, y un prototipo anterior de consola. La aplicación gráfica presenta una misión narrativa ambientada en 2297, una enciclopedia del universo y un historial local de misiones finalizadas.
+NEXUS es un proyecto académico desarrollado en C# que presenta una experiencia interactiva de exploración espacial. Su versión principal utiliza Windows Forms y está ambientada en el año 2297, durante una expedición al planeta Eridani-9.
 
-## Objetivo
+El jugador forma parte de una misión espacial en la que debe explorar instalaciones, investigar una anomalía, tomar decisiones y administrar los recursos de la nave.
 
-Practicar programación con C# y desarrollar una experiencia interactiva de exploración espacial. La versión Windows Forms permite navegar entre pantallas, tomar decisiones durante una misión, observar cambios en los recursos y consultar resultados guardados.
+## Objetivo del proyecto
+
+Aplicar los conocimientos de programación en C# mediante el desarrollo de un videojuego interactivo que integre interfaces gráficas, lógica de programación, persistencia de información y una base de datos relacional.
 
 ## Funcionalidades implementadas
 
-- Navegación entre el menú principal, la misión, la enciclopedia y el historial.
-- Una misión interactiva en Eridani-9, con decisiones que modifican oxígeno, integridad del casco y datos recuperados.
-- Varios desenlaces según la decisión final y los valores de recursos.
-- Guardado automático de los resultados finalizados en JSON dentro del perfil local del usuario.
-- Consulta del historial con fecha, desenlace, puntuación, recursos y decisiones.
-- Enciclopedia navegable con datos establecidos y contenido narrativo marcado como propuesta.
+### 1. Interfaz y navegación
+- Menú principal.
+- Navegación entre las pantallas del juego.
+- Interfaz de misión y exploración.
+- Enciclopedia del universo NEXUS.
+- Historial de misiones.
 
-El prototipo de consola en `Program.cs` y `nexus1.2mrj.csproj` permanece en el repositorio. No está incluido en la solución principal `NEXUS.slnx` y sus zonas/personajes no son mecánicas de la misión WinForms actual.
+### 2. Exploración espacial
+- Movimiento del personaje mediante teclado.
+- Seis habitaciones conectadas.
+- Puertas, objetos y elementos interactivos.
+- Inventario y objetos necesarios para avanzar.
+- Mapa de exploración y objetivos.
 
-## Tecnologías
+### 3. Sistema narrativo
+- Historia ambientada en el año 2297.
+- Asistente de inteligencia artificial ficticio AURA.
+- Diálogos y documentos narrativos.
+- Decisiones que afectan el desarrollo de la misión.
+- Diferentes desenlaces.
+
+### 4. Eventos y desafíos
+- Eventos dinámicos durante la exploración.
+- Desafíos interactivos.
+- Secuencias que deben resolverse.
+- Alertas del sistema AURA.
+- Cambios en los recursos y condiciones del entorno.
+- Progresión condicionada por objetivos y objetos obtenidos.
+
+### 5. Persistencia de datos
+- Registro de expediciones.
+- Almacenamiento del progreso de exploración.
+- Registro de decisiones y resultados.
+- Persistencia mediante SQL Server.
+- Conservación del estado de la partida para continuar la exploración.
+
+## Tecnologías utilizadas
 
 - C#.
-- .NET 10 (`net10.0-windows` para Windows Forms).
+- .NET 10.
 - Windows Forms.
-- `System.Text.Json` para serializar el historial local.
-- Visual Studio y Git/GitHub como herramientas del proyecto.
+- Microsoft SQL Server.
+- SQL Server Management Studio (SSMS).
+- Git y GitHub.
+- Visual Studio.
 
-No se configura SQL Server ni Entity Framework Core en el proyecto Windows Forms.
+## Base de datos — NexusDB
+
+El proyecto integra Microsoft SQL Server para almacenar información relacionada con las expediciones y el progreso del juego.
+
+Las tablas principales son:
+
+- `Cadetes`
+- `Expediciones`
+- `EstadoNave`
+- `DecisionesExpedicion`
+- `BitacoraMisiones`
+
+Los scripts SQL se encuentran en la carpeta `base de datos`.
 
 ## Requisitos
 
-- Windows, para ejecutar la aplicación Windows Forms.
-- Visual Studio con la carga de trabajo **Desarrollo de escritorio de .NET**, o el SDK de .NET 10 instalado.
-- Git, si se va a clonar el repositorio.
+- Sistema operativo Windows.
+- Visual Studio con la carga de trabajo Desarrollo de escritorio de .NET.
+- SDK de .NET 10.
+- Microsoft SQL Server.
+- SQL Server Management Studio (SSMS).
 
-## Abrir y ejecutar desde GitHub en Visual Studio
+## Instalación y ejecución
 
-1. En GitHub, usa **Code > Download ZIP** o clona el repositorio con Git.
-2. Extrae el ZIP si corresponde.
-3. Abre `NEXUS.slnx` desde Visual Studio. Esta solución contiene `NEXUS_WindowsForms/NEXUS_WindowsForms.csproj`.
-4. Si tu instalación de Visual Studio no abre el formato `.slnx`, abre directamente `NEXUS_WindowsForms/NEXUS_WindowsForms.csproj`.
-5. Espera a que Visual Studio restaure las dependencias del proyecto.
-6. Selecciona `NEXUS_WindowsForms` como proyecto de inicio y pulsa **F5** (depuración) o **Ctrl+F5** (sin depuración).
+1. Descargar o clonar el repositorio.
+2. Abrir la solución principal de NEXUS en Visual Studio.
+3. Configurar SQL Server y ejecutar los scripts de creación y actualización de la base de datos.
+4. Verificar la cadena de conexión en `NEXUS_WindowsForms/Services/DatabaseService.cs`.
+5. Restaurar las dependencias del proyecto.
+6. Seleccionar el proyecto Windows Forms como proyecto de inicio.
+7. Ejecutar mediante F5.
 
-También puedes compilar desde una terminal en la carpeta raíz del repositorio:
+## Estructura general del repositorio
 
-```powershell
-dotnet build NEXUS.slnx
-```
+- `NEXUS_WindowsForms/`: aplicación principal Windows Forms.
+- `NEXUS_WindowsForms/Content/`: contenido narrativo y desafíos.
+- `NEXUS_WindowsForms/Controls/`: controles de exploración.
+- `NEXUS_WindowsForms/Models/`: modelos de datos.
+- `NEXUS_WindowsForms/Rendering/`: elementos gráficos.
+- `NEXUS_WindowsForms/Services/`: lógica de servicios y persistencia.
+- `base de datos/`: scripts SQL.
+- `documentos/`: documentación técnica.
+- `evidencias/`: capturas y pruebas del proyecto.
 
-La compilación no ejecuta la aplicación; la ventana gráfica requiere Windows.
+El repositorio también conserva un prototipo anterior desarrollado en consola, separado de la aplicación gráfica principal.
 
-## Estructura del repositorio
+## Resultado de la misión principal
 
-```text
-NEXUS.slnx                         Solución principal: solo el proyecto Windows Forms
-NEXUS_WindowsForms/
-  Program.cs                       Punto de entrada
-  NexusApplicationContext.cs       Navegación y ciclo de vida de formularios
-  Form1.cs                         Menú principal y eventos de navegación
-  FormMision.cs                    Interfaz y presentación de la misión
-  FormInformacion.cs               Interfaz de la enciclopedia
-  FormRegistros.cs                 Interfaz del historial y sus detalles
-  Services/
-    MissionGame.cs                 Etapas, decisiones, recursos y desenlaces
-    MissionHistoryStore.cs         Lectura y escritura del historial JSON
-  Models/MissionResult.cs          Datos de un resultado finalizado
-  Content/NexusEncyclopedia.cs     Secciones y textos de la enciclopedia
-  NexusTheme.cs                    Colores y elementos de estilo compartidos
-  Resources/                       Imágenes utilizadas por el proyecto
-  Properties/Resources.resx        Recursos de imagen integrados
-nexus1.2mrj.csproj                 Proyecto de consola anterior, fuera de NEXUS.slnx
-Program.cs                         Código del prototipo de consola
-docs/                              Documentación técnica y de diseño
-evidencias/                        Material de diseño de referencia
-```
+La misión principal permite investigar la señal de Eridani-9 y tomar decisiones sobre el tratamiento de la anomalía.
 
-Los archivos `Designer.cs` y `.resx` pertenecen al diseño y los recursos de los formularios; la lógica de pantallas generada dinámicamente está principalmente en sus archivos `.cs`.
+En la partida de prueba documentada se consiguió contener la anomalía, recuperar datos y registrar el resultado de la expedición en SQL Server.
 
-## Historial de misiones
+## Documentación complementaria
 
-El archivo se crea al finalizar y guardar una misión en:
+En la carpeta de documentación se incluyen materiales técnicos, de diseño y de base de datos. En la carpeta de evidencias se conservan capturas y resultados de las pruebas realizadas.
 
-```text
-%LOCALAPPDATA%\NEXUS\mission-history.json
-```
+## Autoría
 
-Consulta [docs/modelo-de-datos-propuesto.md](docs/modelo-de-datos-propuesto.md) para el formato almacenado y [docs/arquitectura-actual.md](docs/arquitectura-actual.md) para la relación entre clases.
+Proyecto académico NEXUS — Exploración de Eridani-9.
 
-## Documentación
-
-- [Arquitectura actual](docs/arquitectura-actual.md)
-- [Diseño del juego](docs/diseno-del-juego.md)
-- [Modelo de datos e historial](docs/modelo-de-datos-propuesto.md)
-- [Análisis técnico y limitaciones](docs/analisis-tecnico.md)
-- [Propuesta de arquitectura](docs/arquitectura-propuesta.md) — material de planificación, no descripción de componentes ya implementados.
-## Integración SQL Server — Hito 4 (Operación Memoria)
-
-### Base de Datos (`NexusDB`)
-La persistencia del videojuego se implementó en **Microsoft SQL Server** mediante el script `base de datos/01_CreateDatabase.sql`, que crea las tablas relacionales `Cadetes`, `Expediciones`, `EstadoNave`, `DecisionesExpedicion` y `BitacoraMisiones`.
-
-### Reproducibilidad y Configuración
-1. Abrir **SQL Server Management Studio (SSMS)** y ejecutar completo el script `base de datos/01_CreateDatabase.sql`.
-2. Abrir la solución `NEXO.slnx` en **Visual Studio**.
-3. Verificar la cadena de conexión en `NEXUS_WindowsForms/Data/DatabaseService.cs` apuntando a su instancia local (`Server=.\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;`).
-4. Compilar y ejecutar (`F5`) para registrar/seleccionar cadete, guardar progreso, consultar partidas y verificar la persistencia tras cerrar y volver a abrir la aplicación.
+Desarrollado como práctica de programación con C#, Windows Forms y SQL Server.
