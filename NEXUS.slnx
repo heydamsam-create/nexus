@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="NEXUS_WindowsForms/NEXUS_WindowsForms.csproj" />
+  <Project Path="tests/NEXUS_WindowsForms.Tests/NEXUS_WindowsForms.Tests.csproj" />
 </Solution>

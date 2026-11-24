@@ -70,7 +70,7 @@ namespace NEXUS_WindowsForms.Services
         /// </summary>
         public int ObtenerOCrearCadete(string nombreCadete)
         {
-            string nombreLimpio = string.IsNullOrWhiteSpace(nombreCadete) ? "Cadete Vance" : nombreCadete.Trim();
+            string nombreLimpio = CadetNameValidator.Normalize(nombreCadete);
 
             using SqlConnection conn = GetConnection();
             conn.Open();
