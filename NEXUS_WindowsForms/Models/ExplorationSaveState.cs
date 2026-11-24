@@ -21,6 +21,7 @@ internal sealed class ExplorationSaveState
     public List<string> CompletedWorldEvents { get; set; } = new();
     public List<string> CompletedChallenges { get; set; } = new();
     public Dictionary<string, float> WorldEventClocks { get; set; } = new();
+    public List<EnemySaveState> Enemies { get; set; } = new();
     public string? ActiveChallengeId { get; set; }
     public int ActiveChallengeStep { get; set; }
     public string? ActiveDialogueId { get; set; }
@@ -29,4 +30,16 @@ internal sealed class ExplorationSaveState
 
     // Se conserva para poder leer y escribir partidas guardadas por la versión anterior.
     public bool SecurityDoorUnlocked { get; set; }
+}
+
+/// <summary>Posición y estado de alerta de una amenaza para restaurar la expedición desde JSON.</summary>
+internal sealed class EnemySaveState
+{
+    public string Id { get; set; } = string.Empty;
+    public float X { get; set; }
+    public float Y { get; set; }
+    public bool Alerted { get; set; }
+    // Defaults preserve compatibility with saves created before combat was added.
+    public int Health { get; set; } = 100;
+    public bool IsDead { get; set; }
 }

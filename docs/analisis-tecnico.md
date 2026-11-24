@@ -1,61 +1,82 @@
 # Análisis técnico de NEXUS
 
-## Alcance y proyectos
+## Proyecto principal y herramientas
 
-El repositorio contiene dos proyectos C#:
+- `NEXUS_WindowsForms/NEXUS_WindowsForms.csproj`: aplicación C# Windows Forms con `OutputType=WinExe`, `TargetFramework=net10.0-windows`, nullable e implicit usings.
+- `NEXUS.slnx`: solución activa, con referencia al proyecto Windows Forms.
+- `nexus1.2mrj.csproj` y `Program.cs` en la raíz: prototipo de consola legado, independiente de la solución principal.
+- Las soluciones antiguas se conservan, pero sus rutas de proyecto apuntan a ubicaciones que no existen en el repositorio actual. No deben usarse para abrir la aplicación principal.
 
-- `NEXUS_WindowsForms/NEXUS_WindowsForms.csproj`: aplicación principal de escritorio con `OutputType=WinExe`, `TargetFramework=net10.0-windows`, Windows Forms habilitado, nullable e implicit usings.
-- `nexus1.2mrj.csproj`: prototipo de consola que apunta a `net10.0` y compila el `Program.cs` de la raíz, excluyendo fuentes bajo `NEXUS_WindowsForms`.
+La aplicación gráfica se inicia desde `NEXUS_WindowsForms/Program.cs` con `Application.Run(new NexusApplicationContext())`.
 
-`NEXUS.slnx` referencia el proyecto Windows Forms. Existen también `nexus_v2.slnx` y `nexus_v2.slnx..slnx`; no son las soluciones indicadas como entrada principal en este documento. La aplicación gráfica se inicia en `NEXUS_WindowsForms/Program.cs` mediante `Application.Run(new NexusApplicationContext())`.
+## Dependencias
 
-## Lenguaje y herramientas
+El proyecto declara un paquete NuGet directo:
 
-- C# y .NET 10.
-- Windows Forms para la interfaz gráfica.
-- `System.Text.Json` para el historial local.
-- Visual Studio con Desarrollo de escritorio de .NET, o SDK de .NET 10 para compilar.
-- Git/GitHub para control de versiones y distribución del código.
+| Paquete | Versión | Uso |
+|---|---:|---|
+| `Microsoft.Data.SqlClient` | 7.1.2 | Conexión ADO.NET con SQL Server. |
 
-No aparecen referencias de paquetes NuGet, conexión SQL, Entity Framework Core ni servicios de red en el archivo de proyecto Windows Forms revisado.
+NuGet restaura las dependencias transitivas durante `dotnet restore`. No se utiliza Entity Framework Core ni un motor externo de videojuegos. La exploración 2D y sus gráficos se implementan en el proyecto mediante Windows Forms y GDI+.
 
-## Funcionalidades verificadas en código
+## Funcionalidades verificadas en el código
 
-- Cuatro formularios: menú (`Form1`), misión (`FormMision`), enciclopedia (`FormInformacion`) e historial (`FormRegistros`).
-- Una instancia de cada formulario gestionada durante la sesión por `NexusApplicationContext`; eventos para navegar, volver y salir.
-- Misión narrativa de varias etapas implementada en `MissionGame`, con opciones, cambios limitados de oxígeno/casco/datos y desenlaces según decisión y umbrales.
-- Resultado con ID GUID, nombre, fecha, desenlace, resumen, puntuación, recursos finales y decisiones.
-- Guardado automático JSON de resultados finalizados en `%LOCALAPPDATA%\NEXUS\mission-history.json`, detección de duplicados por ID y manejo de errores de lectura/escritura.
-- Historial consultable con selección de un registro y visualización de detalles; estado explícito cuando está vacío o no puede leerse.
-- Enciclopedia navegable alimentada por `NexusEncyclopedia`; algunos textos identifican su contenido como marco narrativo propuesto.
-- Recursos gráficos bajo `NEXUS_WindowsForms/Resources/` y recursos integrados desde `Properties/Resources.resx`.
+- Cuatro pantallas conectadas: menú, misión/exploración, enciclopedia e historial.
+- Mapa 2D con seis zonas, puertas, colisiones, cámara y minimapa.
+- Movimiento mediante WASD o flechas; interacción con `E`; inventario con `I`; registro de objetivos con `J`.
+- Coleccionables, documentos, terminales, diálogos ramificados, decisiones, objetivos, eventos y desafíos de secuencia.
+- Enemigos que detectan y persiguen al jugador, reciben daño y atacan; disparo con clic izquierdo o botón en pantalla.
+- Recursos de oxígeno, integridad del casco y datos recuperados, con efectos de algunas acciones y desafíos.
+- Resultado de misión con desenlace, resumen, puntuación, recursos finales y decisiones.
+- Ventana maximizada y modo pantalla completa con `F11`; `Esc` devuelve al modo ventana.
 
-El código de consola implementa un prototipo previo con clases de personaje, inventario, objetos, zonas y una misión diferente. No es el motor utilizado por `FormMision`.
+## SQL Server y configuración
 
-## Organización
+`DatabaseService` crea conexiones con `Microsoft.Data.SqlClient`. Lee primero la variable de entorno `NEXUS_SQL_CONNECTION_STRING`; si no está definida, usa:
 
-La lógica de navegación está en `NexusApplicationContext.cs`; la mecánica de misión se separa en `Services/MissionGame.cs`; persistencia en `Services/MissionHistoryStore.cs`; el resultado está en `Models/MissionResult.cs`; los textos de enciclopedia están en `Content/NexusEncyclopedia.cs`. Los formularios secundarios crean buena parte de sus controles desde sus archivos `.cs`. Los `.Designer.cs` y `.resx` existentes forman parte del proyecto y no se describen aquí como modificados.
-
-## Limitaciones actuales
-
-- Windows Forms requiere Windows para ejecutarse; el destino es `net10.0-windows`.
-- No se guardan partidas en curso y no hay función de continuar/reanudar una misión.
-- El JSON se almacena en el perfil local; no hay sincronización, cuentas ni persistencia compartida.
-- La misión es una secuencia fija de etapas, no un mapa libre, combate, inventario o sistema ampliado de misiones.
-- El prototipo de consola y la aplicación gráfica tienen modelos separados; no comparten una capa de dominio integrada.
-- No se encontró un proyecto de pruebas automatizadas entre los archivos de proyecto del repositorio.
-- Las rutas y compatibilidad de las soluciones antiguas no se documentan como comprobadas; la solución principal examinada es `NEXUS.slnx`.
-
-## Compilación y ejecución
-
-Desde la carpeta raíz:
-
-```powershell
-dotnet build NEXUS.slnx
+```text
+Server=localhost\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;
 ```
 
-Para ejecutar la interfaz, abrir `NEXUS.slnx` o el `.csproj` Windows Forms en Visual Studio, seleccionar `NEXUS_WindowsForms` como proyecto de inicio y ejecutar en Windows. La presencia de archivos compilados en `bin/` u `obj/` no sustituye una compilación reciente ni confirma que la aplicación se haya probado visualmente.
+Esta instancia predeterminada pertenece al equipo de desarrollo. En otra computadora hay que definir la variable con la instancia, base y autenticación disponibles allí. La cuenta de Windows o el usuario SQL debe tener permisos sobre la base; además, la primera inicialización del esquema requiere permisos para crear/alterar objetos.
 
-## Elementos fuera de alcance
+El esquema se crea mediante `database/01_CreateDatabase.sql`; `database/02_AddExplorationSave.sql` agrega `EstadoExploracionJson`. El script inicial elimina y recrea las tablas existentes: solo debe usarse al preparar una base nueva o vacía. El servicio puede agregar la columna de exploración si no existe.
 
-El diseño SQL descrito en documentos previos es una propuesta y no una tecnología conectada. La expansión de la cronología, los antecedentes institucionales de NEXUS y las biografías de la tripulación son temas narrativos abiertos. La aplicación no implementa las funciones del prototipo original como parte de su misión Windows Forms.
+## Persistencia
+
+Las partidas en curso se guardan en SQL Server en `Expediciones`, `EstadoNave` y `DecisionesExpedicion`. `EstadoNave` guarda etapa/recursos y una columna JSON (`EstadoExploracionJson`) para el estado detallado del mundo, incluida posición, inventario, habitaciones descubiertas, puertas, objetivos, desafíos, eventos, diálogos y enemigos. Se puede guardar con el botón de la misión; la actividad programa un guardado automático tras 1,2 segundos sin nuevos cambios. Las expediciones en curso se pueden seleccionar y cargar.
+
+Al terminar una misión, `DatabaseService` inserta el resultado en `BitacoraMisiones` y marca la expedición vinculada como completada. La vista `FormRegistros` consulta esa tabla y carga decisiones vinculadas desde `DecisionesExpedicion`. El evento `MissionCompleted` también escribe una copia JSON local mediante `MissionHistoryStore` en `%LOCALAPPDATA%\NEXUS\mission-history.json`; ese archivo no es la fuente que consulta `FormRegistros`.
+
+## Requisitos para clonar y ejecutar
+
+- Windows con soporte para Windows Forms.
+- .NET 10 SDK para compilar desde CLI, o Visual Studio con soporte .NET 10 y la carga **Desarrollo de escritorio de .NET**.
+- SQL Server accesible para guardar/cargar partidas y ver el historial; SSMS es opcional para ejecutar scripts.
+- Acceso a NuGet durante la primera restauración del paquete.
+
+Desde la raíz del repositorio:
+
+```powershell
+git clone <URL-del-repositorio>
+cd <carpeta-del-repositorio>
+dotnet restore NEXUS.slnx
+dotnet build NEXUS.slnx
+dotnet run --project NEXUS_WindowsForms/NEXUS_WindowsForms.csproj
+```
+
+En Visual Studio, abre `NEXUS.slnx`, restaura paquetes si se solicita, confirma `NEXUS_WindowsForms` como proyecto de inicio y ejecuta con F5. Para configurar SQL desde PowerShell antes de iniciar la aplicación:
+
+```powershell
+$env:NEXUS_SQL_CONNECTION_STRING = 'Server=localhost\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;'
+```
+
+No guardes contraseñas ni cadenas privadas dentro del repositorio.
+
+## Límites conocidos
+
+- La aplicación depende de Windows Forms y está dirigida a `net10.0-windows`.
+- No se verificó desde esta documentación que SQL Server esté instalado o accesible en otra computadora; hay que probar la conexión allí.
+- El historial visible usa SQL Server; la copia JSON local no está integrada como fuente de recuperación para `FormRegistros`. Si falla el guardado SQL de un resultado, puede quedar la copia JSON sin que la pantalla de registros lo muestre.
+- El prototipo de consola no forma parte de `NEXUS.slnx`; las soluciones antiguas contienen referencias rotas.
+- No hay un proyecto de pruebas automatizadas incluido en la solución principal.

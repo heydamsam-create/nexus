@@ -1,56 +1,60 @@
-# Diseño del juego NEXUS: misión de Eridani-9
+# Diseño jugable actual de NEXUS
 
-Este documento separa la misión jugable que existe en Windows Forms del contexto narrativo y de los escenarios del prototipo de consola. Las etapas y efectos de decisión descritos a continuación corresponden a `MissionGame`.
+Este documento describe la aplicación Windows Forms que implementa `NEXUS_WindowsForms`. El prototipo de consola que permanece en la raíz es un proyecto independiente y no forma parte de la misión gráfica.
 
-## Universo y premisa
+## Premisa e historia
 
-La expedición está situada en 2297. La nave de exploración NEXUS llega a Eridani-9 después de detectar una señal repetida desde una estructura bajo el cráter de Eos. El cadete debe investigar la señal, recuperar datos y mantener a la tripulación a salvo.
+En el universo narrativo de NEXUS, ambientado en 2297, la expedición llega a Eridani-9 siguiendo una señal emitida desde el cráter de Eos. El jugador explora la instalación abandonada, consulta registros de la tripulación y decide cómo responder a la anomalía. AURA, la IA de la nave, presenta alertas y diálogos. El código incluye narrativa para la misión y una enciclopedia; algunos antecedentes se presentan como marco narrativo y no como una funcionalidad independiente del juego.
 
-La enciclopedia incluye fichas sobre la nave, la anomalía, los lugares, la cronología y los personajes. Marca explícitamente algunas partes como marco narrativo propuesto. No hay una cronología detallada del universo ni biografías de tripulantes con nombres establecidos en el código actual.
+## Recorrido y zonas
 
-## Flujo jugable implementado
+La misión combina una fase inicial de exploración en tiempo real con etapas de aproximación, contacto, exploración de superficie y decisión ante la anomalía. Para completar la expedición, el jugador debe recorrer el mapa, recoger elementos, completar objetivos y desafíos, y elegir un desenlace final.
 
-La misión tiene un briefing inicial y cuatro etapas. Cada etapa permite escoger una o más acciones. La puntuación final se calcula como la suma de oxígeno, integridad del casco y datos recuperados después de limitar cada recurso al rango 0–100.
+El mapa actual tiene seis zonas conectadas:
 
-| Etapa | Decisiones | Efecto en recursos y ruta |
-|---|---|---|
-| Briefing | Iniciar exploración | Avanza a aproximación; no cambia recursos. |
-| Aproximación | Escanear desde órbita | +15 datos y establece la ruta de escaneo orbital. |
-| Aproximación | Descender directamente | −10 oxígeno, −10 casco y +8 datos; establece descenso directo. |
-| Contacto | Responder a la señal | +12 datos y la señal queda marcada como confiable para el texto posterior. |
-| Contacto | Seguir el origen | −12 oxígeno, −5 casco y +15 datos. |
-| Exploración | Enviar una sonda | +15 datos; determina la variante narrativa de la siguiente etapa. |
-| Exploración | Desplegar equipo | −20 oxígeno, −5 casco y +24 datos. |
-| Anomalía | Contener el núcleo | −5 oxígeno, −10 casco y +12 datos. |
-| Anomalía | Extraer datos y retirarse | −5 oxígeno y +8 datos. |
-| Anomalía | Neutralizar la fuente | −8 casco y +3 datos. |
+1. Centro de control.
+2. Sala de comunicaciones.
+3. Laboratorio biológico.
+4. Almacén técnico.
+5. Enfermería.
+6. Cámara de contención alienígena.
 
-Los indicadores de oxígeno, casco y datos se limitan individualmente entre 0 y 100. Las decisiones previas quedan registradas en una lista de títulos de opción.
+Hay puertas con requisitos de acceso, objetos coleccionables, terminales, documentos, elementos secretos, mobiliario con colisiones, minimapa y objetivos visibles. Las puertas, habitaciones descubiertas y objetos se registran en el estado de exploración.
 
-## Desenlaces
+## Controles
 
-El resultado depende de la elección final y, en determinados casos, de los valores finales:
+| Entrada | Acción |
+|---|---|
+| `W`, `A`, `S`, `D` o flechas | Moverse por el escenario. |
+| `E` | Interactuar con objetos, puertas y terminales; avanzar/confirmar en diálogos. |
+| `I` | Abrir o cerrar el inventario. Dentro, usar flechas o `W`/`S` para seleccionar y `E`/Enter para usar un objeto. |
+| `J` | Abrir o cerrar el registro de objetivos. |
+| `1`–`4` | Introducir botones de los desafíos; `1`/`2` seleccionan respuestas en diálogos. |
+| Clic izquierdo o botón `DISPARAR` | Disparar al enemigo apuntado o hacia la orientación del personaje. |
+| `F11` / `Esc` | Activar pantalla completa / volver a ventana. |
 
-- **ANOMALÍA CONTENIDA:** elegir contener el núcleo y terminar con casco ≥75, oxígeno ≥60 y datos ≥50.
-- **CONTENCIÓN PARCIAL:** elegir contenerlo sin cumplir todos esos umbrales.
-- **RECOLECCIÓN EXITOSA:** elegir extracción y terminar con datos ≥55.
-- **REPLIEGUE CON DATOS LIMITADOS:** elegir extracción con menos de 55 datos.
-- **AMENAZA NEUTRALIZADA:** elegir neutralizar la fuente.
+## Sistemas de exploración
 
-El resultado incluye resumen, nombre de misión, fecha local, puntuación, recursos finales y decisiones; se emite al contexto de aplicación para su guardado. La opción de repetir reinicia la misión y los recursos en memoria.
+- **Recursos:** oxígeno, integridad del casco y datos recuperados. Determinadas interacciones, desafíos y eventos los modifican.
+- **Inventario:** recoge y utiliza objetos cuando la acción correspondiente está implementada; algunos objetos cumplen requisitos de puertas o desafíos.
+- **Narrativa:** los diálogos presentan personajes y a AURA, ofrecen elecciones y registran decisiones para influir en etapas posteriores.
+- **Eventos y desafíos:** fallos de soporte vital, comunicaciones, energía, seguridad y anomalía pueden activar secuencias; completarlas puede reparar sistemas o cambiar recursos.
+- **Enemigos y combate:** los enemigos detectan y persiguen al jugador, pueden atacarlo y reciben daño de los disparos. La integridad del casco llega a cero para activar la derrota.
+- **Objetivos:** el registro de misión muestra objetivos pendientes y completados; completar exploración permite avanzar a las etapas narrativas siguientes.
 
-## Contenido de prototipo anterior
+## Decisiones y desenlaces
 
-El `Program.cs` de consola conserva una aventura diferente con `Cadete`, vida, energía, experiencia e inventario, además de `Robot`, `Enemigo`, `Zona` y la misión “La anomalía perdida”. Entre sus zonas aparecen Bosque de Cristal, Ruinas de IRIS, Zona de Anomalía y Punto de Extracción. Esas mecánicas no forman parte del flujo actual de `FormMision`; se documentan como referencia del prototipo legado, no como funciones de la aplicación gráfica.
+Las decisiones principales de `MissionGame` modifican recursos y banderas de ruta. La exploración también guarda decisiones narrativas locales, que se aplican a la lógica de misión al restaurar la partida. En la etapa final se puede contener el núcleo, extraer datos y retirarse, o neutralizar la fuente. Los resultados implementados incluyen **ANOMALÍA CONTENIDA**, **CONTENCIÓN PARCIAL**, **RECOLECCIÓN EXITOSA**, **REPLIEGUE CON DATOS LIMITADOS** y **AMENAZA NEUTRALIZADA**. La etiqueta exacta depende de la opción final y, en ciertos desenlaces, de los recursos disponibles.
 
-## Presentación
+## Guardado
 
-`FormMision` presenta narrativa, estado, recursos, progreso y botones para las decisiones. La interfaz se construye desde `FormMision.cs`; este documento no afirma cambios en los recursos ni en el diseño de `Form1`. Los textos de la enciclopedia se organizan en `NexusEncyclopedia` y varias entradas señalan qué elementos siguen siendo propuesta narrativa.
+Las partidas en curso se guardan en SQL Server; su estado de mapa se serializa como JSON en `dbo.EstadoNave.EstadoExploracionJson`. Se guardan la posición, recursos, etapa, decisiones, inventario, habitaciones, puertas, objetivos, eventos, desafíos, diálogos y estado de enemigos. El botón **GUARDAR PARTIDA** guarda manualmente; la actividad programa un guardado automático cuando pasan 1,2 segundos sin nuevos cambios. **CARGAR PARTIDA** restaura una expedición en curso.
 
-## Límites narrativos y mecánicos
+Los resultados terminados se escriben en `dbo.BitacoraMisiones`; `FormRegistros` consulta SQL Server. El contexto también escribe una copia JSON local en `%LOCALAPPDATA%\NEXUS\mission-history.json`, pero esa copia no es la fuente de datos del formulario de registros. Si falla SQL al finalizar, la copia JSON puede existir sin aparecer en `FormRegistros`.
 
-- La misión actual es una secuencia de etapas fija, no un mapa libre ni un sistema de misiones múltiples.
-- No incluye combate, inventario, niveles, tripulantes con nombre ni gestión de partidas guardadas.
-- El historial almacena solo resultados finalizados; no permite retomar decisiones a mitad de misión.
-- No se ha definido el origen institucional de NEXUS ni el origen o propósito de la anomalía.
-- Los desenlaces son etiquetas narrativas calculadas por reglas del código; no son escenas cinemáticas separadas.
+## Límites
+
+- No hay un motor externo: el mapa y los sprites se dibujan en el proyecto WinForms con GDI+.
+- El guardado persistente depende de que SQL Server esté instalado, accesible y configurado con permisos adecuados.
+- El prototipo de consola conserva una aventura distinta y no comparte el motor de la aplicación gráfica.
+- La misión y el contenido que aparece en pantalla son los que están implementados en `MissionGame`, `ExplorationView`, `NexusNarrative` y `WorldChallengeCatalog`; las propuestas de `docs/arquitectura-propuesta.md` no describen funciones disponibles.

@@ -24,6 +24,10 @@ namespace NEXUS_WindowsForms
         private int? _currentExpeditionId;
         private string _currentCadetName = "Cadete Vance";
         private bool _pendingAutoSave;
+        private bool _isFullscreen;
+        private Rectangle _previousWindowBounds;
+        private FormWindowState _previousWindowState;
+        private FormBorderStyle _previousBorderStyle;
 
         private Label _phaseLabel = null!;
         private Label _stepLabel = null!;
@@ -43,6 +47,10 @@ namespace NEXUS_WindowsForms
         private Panel _dataFill = null!;
         private Panel _storyContentPanel = null!;
         private ExplorationView _explorationView = null!;
+        private Button _fullscreenButton = null!;
+        private Button _backButton = null!;
+        private Button _saveButton = null!;
+        private Button _loadButton = null!;
 
         internal event EventHandler? BackRequested;
 
@@ -62,6 +70,8 @@ namespace NEXUS_WindowsForms
                 existingControl.Dispose();
             }
             BuildInterface();
+            Resize += (_, _) => UpdateHeaderButtonLayout();
+            UpdateHeaderButtonLayout();
             KeyPreview = true;
             KeyDown += FormMision_KeyDown;
             KeyUp += FormMision_KeyUp;
@@ -105,14 +115,59 @@ namespace NEXUS_WindowsForms
 
         private void ConfigureWindow()
         {
+            Rectangle workingArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1440, 900);
             Text = "NEXUS | Operación Umbral de Eos";
             BackColor = BackgroundColor;
             ForeColor = TextColor;
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = true;
-            MinimumSize = new Size(980, 680);
-            ClientSize = new Size(1200, 760);
+            MinimumSize = new Size(Math.Min(980, workingArea.Width), Math.Min(680, workingArea.Height));
+            ClientSize = new Size(Math.Min(1600, Math.Max(MinimumSize.Width, workingArea.Width - 64)),
+                Math.Min(1000, Math.Max(MinimumSize.Height, workingArea.Height - 80)));
             StartPosition = FormStartPosition.CenterScreen;
+            WindowState = FormWindowState.Maximized;
+        }
+
+        private void ToggleFullscreen()
+        {
+            if (!_isFullscreen)
+            {
+                _previousWindowState = WindowState;
+                _previousWindowBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+                _previousBorderStyle = FormBorderStyle;
+                FormBorderStyle = FormBorderStyle.None;
+                WindowState = FormWindowState.Normal;
+                Bounds = Screen.FromControl(this).Bounds;
+                _isFullscreen = true;
+            }
+            else
+            {
+                FormBorderStyle = _previousBorderStyle;
+                WindowState = FormWindowState.Normal;
+                Bounds = _previousWindowBounds;
+                WindowState = _previousWindowState;
+                _isFullscreen = false;
+            }
+            UpdateHeaderButtonLayout();
+            _heldKeys.Clear();
+        }
+
+        private void UpdateHeaderButtonLayout()
+        {
+            if (_fullscreenButton is null || _backButton is null || _saveButton is null || _loadButton is null)
+                return;
+
+            bool compact = ClientSize.Width < 1120;
+            _backButton.Text = compact ? "MENÚ" : "VOLVER AL MENÚ";
+            _backButton.Width = compact ? 70 : 116;
+            _saveButton.Text = compact ? "GUARDAR" : "GUARDAR PARTIDA";
+            _saveButton.Width = compact ? 80 : 134;
+            _loadButton.Text = compact ? "CARGAR" : "CARGAR PARTIDA";
+            _loadButton.Width = compact ? 74 : 124;
+            _fullscreenButton.Text = compact
+                ? _isFullscreen ? "VENTANA" : "PANTALLA F11"
+                : _isFullscreen ? "VOLVER A VENTANA" : "PANTALLA COMPLETA";
+            _fullscreenButton.Width = compact ? 92 : 142;
         }
 
         private void BuildInterface()
@@ -146,8 +201,8 @@ namespace NEXUS_WindowsForms
                 RowCount = 1,
                 Padding = new Padding(14, 8, 12, 8)
             };
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 39));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 61));
 
             var titleStack = new TableLayoutPanel
             {
@@ -186,27 +241,34 @@ namespace NEXUS_WindowsForms
                 Padding = new Padding(0, 4, 0, 4)
             };
 
-            var backButton = NexusTheme.CreateActionButton("VOLVER AL MENÚ");
-            backButton.Width = 155;
-            backButton.Height = 42;
-            backButton.Margin = new Padding(6, 0, 0, 0);
-            backButton.Click += btnVolver_Click;
+            _backButton = NexusTheme.CreateActionButton("VOLVER AL MENÚ");
+            _backButton.Width = 116;
+            _backButton.Height = 42;
+            _backButton.Margin = new Padding(4, 0, 0, 0);
+            _backButton.Click += btnVolver_Click;
 
-            var saveButton = NexusTheme.CreateActionButton("GUARDAR PARTIDA");
-            saveButton.Width = 165;
-            saveButton.Height = 42;
-            saveButton.Margin = new Padding(6, 0, 0, 0);
-            saveButton.Click += (_, _) => SaveCurrentExpedition(showDialog: true);
+            _saveButton = NexusTheme.CreateActionButton("GUARDAR PARTIDA");
+            _saveButton.Width = 134;
+            _saveButton.Height = 42;
+            _saveButton.Margin = new Padding(4, 0, 0, 0);
+            _saveButton.Click += (_, _) => SaveCurrentExpedition(showDialog: true);
 
-            var loadButton = NexusTheme.CreateActionButton("CARGAR PARTIDA");
-            loadButton.Width = 160;
-            loadButton.Height = 42;
-            loadButton.Margin = new Padding(6, 0, 0, 0);
-            loadButton.Click += (_, _) => OpenLoadExpeditionDialog();
+            _loadButton = NexusTheme.CreateActionButton("CARGAR PARTIDA");
+            _loadButton.Width = 124;
+            _loadButton.Height = 42;
+            _loadButton.Margin = new Padding(4, 0, 0, 0);
+            _loadButton.Click += (_, _) => OpenLoadExpeditionDialog();
 
-            navigationArea.Controls.Add(backButton);
-            navigationArea.Controls.Add(saveButton);
-            navigationArea.Controls.Add(loadButton);
+            _fullscreenButton = NexusTheme.CreateActionButton("PANTALLA COMPLETA");
+            _fullscreenButton.Width = 142;
+            _fullscreenButton.Height = 42;
+            _fullscreenButton.Margin = new Padding(4, 0, 0, 0);
+            _fullscreenButton.Click += (_, _) => ToggleFullscreen();
+
+            navigationArea.Controls.Add(_backButton);
+            navigationArea.Controls.Add(_saveButton);
+            navigationArea.Controls.Add(_loadButton);
+            navigationArea.Controls.Add(_fullscreenButton);
             header.Controls.Add(navigationArea, 1, 0);
 
             return header;
@@ -221,8 +283,8 @@ namespace NEXUS_WindowsForms
                 RowCount = 1,
                 Margin = new Padding(0, 14, 0, 14)
             };
-            main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 69));
-            main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 31));
+            main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 74));
+            main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 26));
 
             var storyPanel = new Panel
             {
@@ -847,6 +909,18 @@ namespace NEXUS_WindowsForms
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            Keys keyCode = keyData & Keys.KeyCode;
+            if (keyCode == Keys.F11)
+            {
+                ToggleFullscreen();
+                return true;
+            }
+            if (keyCode == Keys.Escape && _isFullscreen)
+            {
+                ToggleFullscreen();
+                return true;
+            }
+
             if (_game.CurrentStageKey == "Exploration" && _explorationView.ChallengeOpen)
             {
                 int challengeKey = (keyData & Keys.KeyCode) switch

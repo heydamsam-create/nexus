@@ -1,18 +1,18 @@
-# Documentación técnica de NEXUS
+# Documentación de NEXUS
 
-Esta carpeta contiene la documentación académica del proyecto NEXUS v1.0 para la materia de Programación II.
+La aplicación principal documentada aquí es `NEXUS_WindowsForms`, C# con Windows Forms y .NET 10, abierta desde `NEXUS.slnx`.
 
-## Contenido previsto
+## Guías actuales
 
-- Manual técnico y preparación para el examen H3.
-- Diagrama de clases y relaciones entre objetos.
-- Flujograma de un proceso importante del programa.
-- Ejemplos de análisis y seguimiento de objetos.
-- Preguntas y respuestas razonadas de preparación para el examen.
-- Diagnóstico personal de aprendizaje.
+- [README principal](../README.md): requisitos, SQL Server, configuración de conexión, compilación y ejecución.
+- [Arquitectura actual](arquitectura-actual.md): formularios, navegación, exploración y persistencia implementada.
+- [Análisis técnico](analisis-tecnico.md): paquetes, requisitos, capacidades y límites actuales.
+- [Diseño del juego](diseno-del-juego.md): controles, mapa, narrativa y sistemas jugables.
+- [Modelo de datos](modelo-de-datos-propuesto.md): esquema SQL, partidas guardadas y resultados.
 
-La documentación se elaborará a partir del código fuente real del proyecto. Los conceptos que no estén implementados se identificarán como ejemplos complementarios.
+## Documentos de propuesta y material académico
 
-## Proyecto
+- [Arquitectura propuesta](arquitectura-propuesta.md) conserva una propuesta previa y no describe la estructura actual del proyecto.
+- Los manuales, diagramas, presentaciones y capturas de esta carpeta son material académico/histórico complementario. Para instalar y ejecutar la versión actual, sigue el README principal.
 
-Consulta el archivo README.md de la raíz del repositorio para conocer la descripción general y las instrucciones de ejecución de NEXUS.
+Los scripts SQL de la aplicación se encuentran en `../database/`. Antes de ejecutar el script de creación, consulta la advertencia del README: recrea las tablas y puede borrar datos existentes.

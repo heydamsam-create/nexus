@@ -33,52 +33,75 @@ internal sealed class ExplorationView : Control
     private const int MapRows = 30;
     private const float PlayerRadius = 12f;
     private const float MovementSpeed = 210f;
-    private static readonly int[] ConnectorColumns = { 6, 18, 30 };
+    private const float EnemyDetectionRadius = 272f;
+    private const float EnemyContactDistance = 30f;
+    private const float EnemyAttackInterval = 1.1f;
+    private const float EnemySaveInterval = 3f;
+    private const float PlayerShotInterval = 0.34f;
+    private const float PlayerShotRange = 460f;
+    private const int PlayerShotDamage = 50;
 
     private readonly bool[,] _walls = new bool[MapColumns, MapRows];
     private readonly HashSet<string> _unlockedDoors = new(StringComparer.OrdinalIgnoreCase);
     private static readonly RoomSpec[] Rooms =
     {
-        new("control_center", "CENTRO DE CONTROL", 2, 2, 10, 8, Color.FromArgb(17, 39, 63), Color.FromArgb(52, 207, 239)),
-        new("communications", "SALA DE COMUNICACIONES", 14, 2, 10, 8, Color.FromArgb(20, 34, 66), Color.FromArgb(105, 141, 255)),
-        new("main_lab", "LABORATORIO PRINCIPAL", 26, 2, 10, 8, Color.FromArgb(15, 52, 57), Color.FromArgb(67, 230, 195)),
-        new("storage", "ALMACÉN DE SUMINISTROS", 2, 20, 10, 8, Color.FromArgb(47, 38, 34), Color.FromArgb(244, 174, 87)),
-        new("research", "ZONA DE INVESTIGACIÓN", 14, 20, 10, 8, Color.FromArgb(38, 31, 58), Color.FromArgb(191, 127, 255)),
-        new("anomaly_chamber", "CÁMARA DE LA ANOMALÍA", 26, 20, 10, 8, Color.FromArgb(43, 24, 54), Color.FromArgb(255, 91, 198))
+        new("control_center", "CENTRO DE CONTROL", 2, 2, 11, 9, Color.FromArgb(24, 34, 43), Color.FromArgb(59, 199, 232)),
+        new("communications", "SALA DE COMUNICACIONES", 18, 2, 11, 8, Color.FromArgb(22, 31, 46), Color.FromArgb(87, 151, 239)),
+        new("main_lab", "LABORATORIO BIOLÓGICO", 27, 12, 9, 8, Color.FromArgb(22, 39, 38), Color.FromArgb(77, 210, 177)),
+        new("storage", "ALMACÉN TÉCNICO", 2, 20, 11, 8, Color.FromArgb(39, 36, 31), Color.FromArgb(219, 164, 93)),
+        new("research", "ENFERMERÍA", 15, 20, 10, 8, Color.FromArgb(35, 35, 44), Color.FromArgb(132, 190, 229)),
+        new("anomaly_chamber", "CÁMARA DE CONTENCIÓN ALIENÍGENA", 27, 21, 9, 8, Color.FromArgb(39, 27, 39), Color.FromArgb(228, 102, 155))
+    };
+    private static readonly Rectangle[] Corridors =
+    {
+        new(13, 5, 5, 3),       // Control ↔ communications: raised cross-connector.
+        new(7, 11, 3, 9),       // West maintenance spine.
+        new(15, 8, 3, 8),       // Communications ↔ central spine.
+        new(15, 15, 3, 5),      // Central spine approaches the infirmary access door.
+        new(28, 10, 3, 2),      // Communications ↔ biological lab threshold.
+        new(24, 23, 3, 3)        // Infirmary ↔ containment threshold.
     };
     private static readonly DoorSpec[] Doors =
     {
-        new("control_access", 6, 9, "control_center", null, null, true),
-        new("communications_access", 18, 9, "communications", "access_card", null),
-        new("laboratory_access", 30, 9, "main_lab", "access_card", null),
-        new("storage_access", 6, 20, "storage", null, null, true),
-        new("research_access", 18, 20, "research", "power_cell", null),
-        new("anomaly_access", 30, 20, "anomaly_chamber", null, "security_console")
+        new("control_access", 12, 6, "control_center", null, null, true),
+        new("communications_access", 18, 6, "communications", "access_card", null),
+        new("laboratory_access", 29, 12, "main_lab", "access_card", null),
+        new("storage_access", 8, 20, "storage", null, null, true),
+        new("research_access", 17, 20, "research", "power_cell", null),
+        new("anomaly_access", 27, 24, "anomaly_chamber", null, "security_console")
     };
-    private readonly RectangleF[] _furniture =
+    private static readonly StationFixture[] _fixtures =
     {
-        new(3 * TileSize + 5, 3 * TileSize + 4, 33, 26),
-        new(9 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(15 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(21 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(27 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(33 * TileSize + 4, 3 * TileSize + 4, 34, 26),
-        new(3 * TileSize + 4, 22 * TileSize + 4, 34, 28),
-        new(9 * TileSize + 4, 22 * TileSize + 4, 34, 28),
-        new(15 * TileSize + 4, 22 * TileSize + 4, 34, 28),
-        new(21 * TileSize + 4, 22 * TileSize + 4, 34, 28),
-        new(27 * TileSize + 4, 22 * TileSize + 4, 34, 28),
-        new(33 * TileSize + 4, 22 * TileSize + 4, 34, 28)
+        Fixture("control_center", 3, 3, 2, "bridge"), Fixture("control_center", 10, 8, 1, "console"),
+        Fixture("communications", 20, 3, 2, "rack"), Fixture("communications", 26, 8, 1, "console"),
+        Fixture("main_lab", 32, 13, 2, "tank"), Fixture("main_lab", 28, 18, 1, "table"),
+        Fixture("storage", 3, 21, 1, "crate"), Fixture("storage", 10, 21, 2, "rack"),
+        Fixture("storage", 10, 26, 1, "crate"),
+        Fixture("research", 20, 22, 2, "bed"), Fixture("research", 23, 21, 1, "cabinet"),
+        Fixture("research", 17, 26, 1, "bed"),
+        Fixture("anomaly_chamber", 33, 22, 2, "containment"), Fixture("anomaly_chamber", 33, 27, 2, "containment"),
+        Fixture("control_center", 3, 9, 1, "cabinet"), Fixture("communications", 20, 8, 1, "console"),
+        Fixture("main_lab", 35, 18, 1, "cabinet"), Fixture("research", 22, 26, 1, "cabinet")
     };
+    private readonly RectangleF[] _furniture = _fixtures.Select(item => item.Bounds).ToArray();
+    private readonly List<EnemyActor> _enemies = new();
     private readonly ExplorerSpriteSheet _sprites = new();
     private readonly Dictionary<string, Bitmap> _roomFloorTextures = Rooms.ToDictionary(
         room => room.Id, room => CreateFloorTexture(room.FloorColor), StringComparer.OrdinalIgnoreCase);
     private readonly Bitmap _floorTile = CreateFloorTexture(Color.FromArgb(13, 27, 43));
     private float _cameraX;
     private float _cameraY;
+    private float _cameraZoom = 1f;
     private float _animationClock;
     private bool _isMoving;
     private float _interactionTimer;
+    private float _enemyPathTimer;
+    private float _enemySaveTimer;
+    private float _shotCooldown;
+    private float _playerHitTimer;
+    private float _muzzleFlashTimer;
+    private PointF _shotStart;
+    private PointF _muzzleFlashEnd;
     private ExplorerDirection _facing = ExplorerDirection.Down;
     private int _oxygen = 100;
     private int _hull = 100;
@@ -101,20 +124,20 @@ internal sealed class ExplorationView : Control
         new("toolkit", "KIT DE REPARACIÓN", 9, 25, "Kit de reparación añadido al inventario.", 0, 0, 0, "item"),
         new("manifest_document", "MANIFIESTO DE CARGA", 4, 26, "El almacén recibió suministros antes de la anomalía.", 0, 0, 2, "document"),
         new("spare_fuse", "FUSIBLE AUXILIAR", 7, 26, "Fusible de repuesto añadido al inventario.", 0, 0, 0, "item"),
-        new("life_support_reset", "CONSOLA DE SOPORTE VITAL", 4, 6, "", 0, 0, 0, "challenge"),
-        new("signal_terminal", "ANTENA DE COMUNICACIONES", 18, 5, "Descifrar la señal repetida de Eridani-9.", 0, 0, 12, "objective"),
-        new("communications_restore", "RELÉ DE COMUNICACIONES", 22, 7, "", 0, 0, 0, "challenge"),
-        new("communications_log", "REGISTRO DE TRANSMISIONES", 22, 5, "La señal contiene una respuesta inteligente.", 0, 0, 3, "document"),
-        new("secret_archive", "ARCHIVO OCULTO", 22, 8, "", 0, 0, 8, "secret", "toolkit", "secret_datacube"),
-        new("power_cell", "CÉLULA DE ENERGÍA", 30, 5, "Célula de energía añadida al inventario.", 0, 0, 0, "item"),
-        new("generator_repair", "GENERADOR AUXILIAR", 34, 7, "", 0, 0, 0, "challenge"),
-        new("lab_document", "INFORME DE LABORATORIO", 27, 7, "El campo de la anomalía reacciona a pulsos eléctricos.", 0, 0, 3, "document"),
-        new("research_log", "CUADERNO DE INVESTIGACIÓN", 15, 24, "El acceso a la cámara requiere validar el protocolo.", 0, 0, 3, "document"),
-        new("security_override", "TECLADO DE SEGURIDAD", 22, 24, "", 0, 0, 0, "challenge"),
-        new("security_console", "CONSOLA DE INVESTIGACIÓN", 18, 25, "", 0, -4, 5, "objective"),
-        new("anomaly_stabilize", "NODO DE RESONANCIA", 33, 23, "", 0, 0, 0, "challenge"),
-        new("anomaly_terminal", "NÚCLEO DE DATOS", 30, 24, "Asegurar los datos del núcleo y completar la expedición.", 0, 0, 18, "objective"),
-        new("anomaly_record", "ECO DE LA ANOMALÍA", 33, 25, "El patrón parece responder a la presencia humana.", 0, 0, 5, "document")
+        new("life_support_reset", "CONSOLA DE SOPORTE VITAL", 11, 5, "", 0, 0, 0, "challenge"),
+        new("signal_terminal", "ANTENA DE COMUNICACIONES", 22, 4, "Descifrar la señal repetida de Eridani-9.", 0, 0, 12, "objective"),
+        new("communications_restore", "RELÉ DE COMUNICACIONES", 24, 7, "", 0, 0, 0, "challenge"),
+        new("communications_log", "REGISTRO DE TRANSMISIONES", 26, 4, "La señal contiene una respuesta inteligente.", 0, 0, 3, "document"),
+        new("secret_archive", "ARCHIVO OCULTO", 24, 8, "", 0, 0, 8, "secret", "toolkit", "secret_datacube"),
+        new("power_cell", "CÉLULA DE ENERGÍA", 30, 14, "Célula de energía añadida al inventario.", 0, 0, 0, "item"),
+        new("generator_repair", "GENERADOR AUXILIAR", 34, 17, "", 0, 0, 0, "challenge"),
+        new("lab_document", "INFORME DE LABORATORIO", 34, 13, "El campo de la anomalía reacciona a pulsos eléctricos.", 0, 0, 3, "document"),
+        new("research_log", "CUADERNO DE INVESTIGACIÓN", 17, 24, "El acceso a la cámara requiere validar el protocolo.", 0, 0, 3, "document"),
+        new("security_override", "TECLADO DE SEGURIDAD", 23, 24, "", 0, 0, 0, "challenge"),
+        new("security_console", "CONSOLA DE INVESTIGACIÓN", 19, 26, "", 0, -4, 5, "objective"),
+        new("anomaly_stabilize", "NODO DE RESONANCIA", 30, 23, "", 0, 0, 0, "challenge"),
+        new("anomaly_terminal", "NÚCLEO DE DATOS", 30, 26, "Asegurar los datos del núcleo y completar la expedición.", 0, 0, 18, "objective"),
+        new("anomaly_record", "ECO DE LA ANOMALÍA", 34, 26, "El patrón parece responder a la presencia humana.", 0, 0, 5, "document")
     };
 
     public ExplorationSaveState State { get; private set; }
@@ -125,10 +148,13 @@ internal sealed class ExplorationView : Control
     {
         State = state ?? new ExplorationSaveState();
         NormalizeState();
+        RestoreEnemies();
         State.PlayerX = Math.Clamp(State.PlayerX, TileSize * 2f, (MapColumns - 2) * TileSize);
         State.PlayerY = Math.Clamp(State.PlayerY, TileSize * 2f, (MapRows - 2) * TileSize);
         BuildMap();
         ApplySavedDoorState();
+        EnsurePlayerOnWalkableFloor();
+        EnsureEnemiesOnWalkableFloor();
         DiscoverCurrentRoom();
         RestoreActiveDialogue();
         RestoreActiveChallenge();
@@ -153,11 +179,12 @@ internal sealed class ExplorationView : Control
     public int ChallengeStep => _challengeStep;
     public int ChallengeLength => _activeChallenge?.Sequence.Length ?? 0;
     public bool MissionLogOpen => _missionLogOpen;
-    public bool BlocksMovement => _inventoryOpen || _missionLogOpen || DialogueOpen || ChallengeOpen;
+    public bool PlayerDefeated => _hull <= 0;
+    public bool BlocksMovement => _inventoryOpen || _missionLogOpen || DialogueOpen || ChallengeOpen || PlayerDefeated;
 
     public void ToggleInventory()
     {
-        if (DialogueOpen || ChallengeOpen || _missionLogOpen) return;
+        if (DialogueOpen || ChallengeOpen || _missionLogOpen || PlayerDefeated) return;
         _inventoryOpen = !_inventoryOpen;
         _inventorySelection = Math.Clamp(_inventorySelection, 0, Math.Max(0, GetInventoryItems().Count - 1));
         Invalidate();
@@ -165,7 +192,7 @@ internal sealed class ExplorationView : Control
 
     public void ToggleMissionLog()
     {
-        if (DialogueOpen || ChallengeOpen || _inventoryOpen) return;
+        if (DialogueOpen || ChallengeOpen || _inventoryOpen || PlayerDefeated) return;
         _missionLogOpen = !_missionLogOpen;
         Invalidate();
     }
@@ -297,7 +324,7 @@ internal sealed class ExplorationView : Control
 
     public bool MovePlayer(int horizontal, int vertical, float elapsedSeconds)
     {
-        if (BlocksMovement) return false;
+        if (BlocksMovement || PlayerDefeated) return false;
         if (horizontal == 0 && vertical == 0)
         {
             _animationClock += Math.Clamp(elapsedSeconds, 0f, 0.05f);
@@ -336,11 +363,14 @@ internal sealed class ExplorationView : Control
     {
         State = state ?? new ExplorationSaveState();
         NormalizeState();
+        RestoreEnemies();
         State.PlayerX = Math.Clamp(State.PlayerX, TileSize * 2f, (MapColumns - 2) * TileSize);
         State.PlayerY = Math.Clamp(State.PlayerY, TileSize * 2f, (MapRows - 2) * TileSize);
         _unlockedDoors.Clear();
         BuildMap();
         ApplySavedDoorState();
+        EnsurePlayerOnWalkableFloor();
+        EnsureEnemiesOnWalkableFloor();
         DiscoverCurrentRoom();
         _inventorySelection = 0;
         _missionLogOpen = false;
@@ -351,7 +381,7 @@ internal sealed class ExplorationView : Control
 
     public void Interact()
     {
-        if (BlocksMovement) return;
+        if (BlocksMovement || PlayerDefeated) return;
         _interactionTimer = 0.55f;
         _animationClock += 0.03f;
 
@@ -523,10 +553,119 @@ internal sealed class ExplorationView : Control
 
     public void SetMissionVitals(int oxygen, int hull, int data)
     {
+        bool newlyDefeated = _hull > 0 && hull <= 0;
         _oxygen = Math.Clamp(oxygen, 0, 100);
         _hull = Math.Clamp(hull, 0, 100);
         _data = Math.Clamp(data, 0, 100);
+        if (newlyDefeated)
+            _statusMessage = "ALERTA CRÍTICA // INTEGRIDAD DEL TRAJE AGOTADA.";
         Invalidate();
+    }
+
+    private void FireInFacingDirection()
+    {
+        PointF direction = _facing switch
+        {
+            ExplorerDirection.Up => new PointF(0, -1),
+            ExplorerDirection.Left => new PointF(-1, 0),
+            ExplorerDirection.Right => new PointF(1, 0),
+            _ => new PointF(0, 1)
+        };
+        FireAt(State.PlayerX + direction.X * PlayerShotRange,
+            State.PlayerY + direction.Y * PlayerShotRange);
+    }
+
+    private void FireAt(float targetX, float targetY)
+    {
+        if (PlayerDefeated || BlocksMovement || _shotCooldown > 0) return;
+        float dx = targetX - State.PlayerX;
+        float dy = targetY - State.PlayerY;
+        float length = MathF.Sqrt(dx * dx + dy * dy);
+        if (length < 1f) return;
+
+        _shotCooldown = PlayerShotInterval;
+        _facing = Math.Abs(dx) > Math.Abs(dy)
+            ? dx < 0 ? ExplorerDirection.Left : ExplorerDirection.Right
+            : dy < 0 ? ExplorerDirection.Up : ExplorerDirection.Down;
+        float range = Math.Min(PlayerShotRange, length);
+        float unitX = dx / length;
+        float unitY = dy / length;
+        _shotStart = new PointF(State.PlayerX, State.PlayerY);
+        _muzzleFlashEnd = _shotStart;
+        _muzzleFlashTimer = 0.12f;
+        EnemyActor? struckEnemy = null;
+
+        for (float distance = 8f; distance <= range; distance += 8f)
+        {
+            float shotX = State.PlayerX + unitX * distance;
+            float shotY = State.PlayerY + unitY * distance;
+            if (ShotHitsObstacle(shotX, shotY))
+            {
+                _muzzleFlashEnd = new PointF(shotX, shotY);
+                break;
+            }
+            EnemyActor? enemy = _enemies.FirstOrDefault(candidate => !candidate.Save.IsDead &&
+                DistanceSquared(shotX, shotY, candidate.Save.X, candidate.Save.Y) <= 19f * 19f);
+            if (enemy is not null)
+            {
+                struckEnemy = enemy;
+                _muzzleFlashEnd = new PointF(enemy.Save.X, enemy.Save.Y);
+                break;
+            }
+            _muzzleFlashEnd = new PointF(shotX, shotY);
+        }
+
+        if (struckEnemy is not null)
+        {
+            struckEnemy.Save.Alerted = true;
+            struckEnemy.Save.Health = Math.Max(0, struckEnemy.Save.Health - PlayerShotDamage);
+            struckEnemy.HitFlashRemaining = 0.24f;
+            if (struckEnemy.Save.Health == 0)
+            {
+                struckEnemy.Save.IsDead = true;
+                _statusMessage = $"AMENAZA ELIMINADA // {struckEnemy.Name}.";
+            }
+            else
+            {
+                _statusMessage = $"IMPACTO CONFIRMADO // {struckEnemy.Name}: {struckEnemy.Save.Health}/100.";
+            }
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            _statusMessage = "DISPARO DE ENERGÍA // SIN IMPACTO.";
+        }
+        Invalidate();
+    }
+
+    private bool ShotHitsObstacle(float x, float y)
+    {
+        int tileX = (int)(x / TileSize);
+        int tileY = (int)(y / TileSize);
+        if (tileX < 0 || tileX >= MapColumns || tileY < 0 || tileY >= MapRows || _walls[tileX, tileY])
+            return true;
+        return _furniture.Any(fixture => fixture.Contains(x, y));
+    }
+
+    private bool HasLineOfSight(float startX, float startY, float endX, float endY)
+    {
+        float dx = endX - startX;
+        float dy = endY - startY;
+        float distance = MathF.Sqrt(dx * dx + dy * dy);
+        int steps = Math.Max(1, (int)MathF.Ceiling(distance / 8f));
+        for (int step = 1; step < steps; step++)
+        {
+            float fraction = step / (float)steps;
+            if (ShotHitsObstacle(startX + dx * fraction, startY + dy * fraction)) return false;
+        }
+        return true;
+    }
+
+    private static float DistanceSquared(float x1, float y1, float x2, float y2)
+    {
+        float dx = x1 - x2;
+        float dy = y1 - y2;
+        return dx * dx + dy * dy;
     }
 
     protected override void Dispose(bool disposing)
@@ -595,7 +734,12 @@ internal sealed class ExplorationView : Control
 
     public void AdvanceWorld(float elapsedSeconds)
     {
-        if (_inventoryOpen || _missionLogOpen || DialogueOpen) return;
+        if (_inventoryOpen || _missionLogOpen || DialogueOpen || PlayerDefeated) return;
+        float elapsed = Math.Clamp(elapsedSeconds, 0f, 0.25f);
+        _animationClock += elapsed;
+        _shotCooldown = Math.Max(0f, _shotCooldown - elapsed);
+        _playerHitTimer = Math.Max(0f, _playerHitTimer - elapsed);
+        _muzzleFlashTimer = Math.Max(0f, _muzzleFlashTimer - elapsed);
         string? currentRoom = GetRoomIdAtTile((int)(State.PlayerX / TileSize), (int)(State.PlayerY / TileSize));
         foreach (string eventId in State.ActiveWorldEvents.ToArray())
         {
@@ -604,15 +748,15 @@ internal sealed class ExplorationView : Control
                 (!worldEvent.DamageAnywhere && !string.Equals(currentRoom, worldEvent.RoomId, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            State.WorldEventClocks.TryGetValue(eventId, out float elapsed);
-            elapsed += Math.Clamp(elapsedSeconds, 0, 0.25f);
-            if (elapsed < worldEvent.DamageIntervalSeconds)
+            State.WorldEventClocks.TryGetValue(eventId, out float eventElapsed);
+            eventElapsed += elapsed;
+            if (eventElapsed < worldEvent.DamageIntervalSeconds)
             {
-                State.WorldEventClocks[eventId] = elapsed;
+                State.WorldEventClocks[eventId] = eventElapsed;
                 continue;
             }
 
-            State.WorldEventClocks[eventId] = elapsed - worldEvent.DamageIntervalSeconds;
+            State.WorldEventClocks[eventId] = eventElapsed - worldEvent.DamageIntervalSeconds;
             _statusMessage = worldEvent.OxygenDamage > 0
                 ? $"AURA // SOPORTE VITAL INESTABLE: O₂ -{worldEvent.OxygenDamage}%."
                 : $"AURA // INTERFERENCIA ACTIVA: casco -{worldEvent.HullDamage}%.";
@@ -620,6 +764,16 @@ internal sealed class ExplorationView : Control
                 $"Daño ambiental: {worldEvent.Id}", -worldEvent.OxygenDamage, -worldEvent.HullDamage));
             StateChanged?.Invoke(this, EventArgs.Empty);
             Invalidate();
+        }
+
+        UpdateEnemies(elapsed);
+        if (_playerHitTimer > 0 || _muzzleFlashTimer > 0)
+            Invalidate();
+        _enemySaveTimer += elapsed;
+        if (_enemySaveTimer >= EnemySaveInterval)
+        {
+            _enemySaveTimer = 0;
+            StateChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -632,14 +786,26 @@ internal sealed class ExplorationView : Control
 
         float viewWidth = ClientSize.Width;
         float viewHeight = ClientSize.Height;
-        _cameraX = Math.Clamp(State.PlayerX - viewWidth / 2f, 0, MapColumns * TileSize - viewWidth);
-        _cameraY = Math.Clamp(State.PlayerY - viewHeight / 2f, 0, MapRows * TileSize - viewHeight);
-        graphics.TranslateTransform(-_cameraX, -_cameraY);
+        _cameraZoom = Math.Clamp(Math.Min(viewWidth / 760f, viewHeight / 460f), 0.95f, 1.4f);
+        float worldViewWidth = viewWidth / _cameraZoom;
+        float worldViewHeight = viewHeight / _cameraZoom;
+        _cameraX = Math.Clamp(State.PlayerX - worldViewWidth / 2f,
+            0, MapColumns * TileSize - worldViewWidth);
+        _cameraY = Math.Clamp(State.PlayerY - worldViewHeight / 2f,
+            0, MapRows * TileSize - worldViewHeight);
+        using (var worldTransform = new System.Drawing.Drawing2D.Matrix(
+                   _cameraZoom, 0, 0, _cameraZoom, -_cameraX * _cameraZoom, -_cameraY * _cameraZoom))
+        {
+            graphics.Transform = worldTransform;
+        }
 
         DrawMap(graphics);
+        DrawStationLighting(graphics);
         DrawSystemEventEffects(graphics);
         DrawAnomalyField(graphics);
         DrawFurniture(graphics);
+        DrawEnemies(graphics);
+        DrawCombatEffects(graphics);
         DrawObjects(graphics);
         DrawPlayer(graphics);
 
@@ -650,6 +816,7 @@ internal sealed class ExplorationView : Control
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
+        Focus();
         if (e.Button == MouseButtons.Left && _activeChallenge is not null)
         {
             Focus();
@@ -663,6 +830,15 @@ internal sealed class ExplorationView : Control
                 }
             }
             return;
+        }
+
+        if (e.Button == MouseButtons.Left && _activeChallenge is null &&
+            _activeDialogue is null && !_inventoryOpen && !_missionLogOpen)
+        {
+            if (GetShootButtonBounds().Contains(e.Location))
+                FireInFacingDirection();
+            else
+                FireAt(e.X / _cameraZoom + _cameraX, e.Y / _cameraZoom + _cameraY);
         }
     }
 
@@ -776,18 +952,99 @@ internal sealed class ExplorationView : Control
             _walls[x, y] = true;
 
         foreach (RoomSpec room in Rooms)
-            CarveRoom(room.X, room.Y, room.Width, room.Height);
+            CarveRoomShape(room);
 
-        // Corredor central y conectores verticales de las tres salas de cada ala.
-        CarveRoom(2, 13, 34, 3);
-        foreach (int column in ConnectorColumns)
-        {
-            CarveRoom(column, 10, 1, 3);
-            CarveRoom(column, 16, 1, 4);
-        }
+        foreach (Rectangle corridor in Corridors)
+            CarveRoom(corridor.X, corridor.Y, corridor.Width, corridor.Height);
+
+        // Intentional open thresholds between the control wing, comms, and service spine.
+        CarveRoom(8, 10, 1, 1);
+        CarveRoom(15, 9, 3, 1);
+        CarveRoom(27, 9, 4, 1);
+
+        // Doors are the only deliberate openings in each room's perimeter.
+        foreach (DoorSpec door in Doors)
+            _walls[door.X, door.Y] = false;
 
         foreach (DoorSpec door in Doors)
             _walls[door.X, door.Y] = !IsDoorUnlocked(door);
+    }
+
+    private void EnsurePlayerOnWalkableFloor()
+    {
+        if (!HitsWall(State.PlayerX, State.PlayerY)) return;
+        FindNearestWalkable(State.PlayerX, State.PlayerY, out float x, out float y);
+        State.PlayerX = x;
+        State.PlayerY = y;
+    }
+
+    private void EnsureEnemiesOnWalkableFloor()
+    {
+        foreach (EnemyActor enemy in _enemies)
+        {
+            if (enemy.Save.IsDead || !HitsWall(enemy.Save.X, enemy.Save.Y)) continue;
+            EnemySpawn spawn = GetEnemySpawn(enemy.Id);
+            enemy.Save.X = spawn.TileX * TileSize + TileSize / 2f;
+            enemy.Save.Y = spawn.TileY * TileSize + TileSize / 2f;
+            enemy.NextX = enemy.NextY = -1;
+        }
+    }
+
+    private void FindNearestWalkable(float worldX, float worldY, out float resultX, out float resultY)
+    {
+        int originX = Math.Clamp((int)(worldX / TileSize), 0, MapColumns - 1);
+        int originY = Math.Clamp((int)(worldY / TileSize), 0, MapRows - 1);
+        var queue = new Queue<Point>();
+        var visited = new HashSet<Point>();
+        var origin = new Point(originX, originY);
+        queue.Enqueue(origin);
+        visited.Add(origin);
+        Point[] neighbors = { new(0, -1), new(1, 0), new(0, 1), new(-1, 0) };
+        while (queue.Count > 0)
+        {
+            Point tile = queue.Dequeue();
+            float centerX = tile.X * TileSize + TileSize / 2f;
+            float centerY = tile.Y * TileSize + TileSize / 2f;
+            if (!HitsWall(centerX, centerY))
+            {
+                resultX = centerX;
+                resultY = centerY;
+                return;
+            }
+            foreach (Point offset in neighbors)
+            {
+                Point next = new(tile.X + offset.X, tile.Y + offset.Y);
+                if (next.X < 0 || next.X >= MapColumns || next.Y < 0 || next.Y >= MapRows ||
+                    !visited.Add(next)) continue;
+                queue.Enqueue(next);
+            }
+        }
+        resultX = 4 * TileSize + TileSize / 2f;
+        resultY = 4 * TileSize + TileSize / 2f;
+    }
+
+    private void CarveRoomShape(RoomSpec room)
+    {
+        for (int x = room.X + 1; x < room.X + room.Width - 1; x++)
+        for (int y = room.Y + 1; y < room.Y + room.Height - 1; y++)
+        {
+            bool cutCorner = room.Id switch
+            {
+                "control_center" => (x == room.X + 1 && y == room.Y + 1) ||
+                                    (x == room.X + room.Width - 2 && y == room.Y + room.Height - 2),
+                "communications" => (x == room.X + room.Width - 2 && y == room.Y + 1) ||
+                                    (x == room.X + 1 && y == room.Y + room.Height - 2),
+                "main_lab" => (x == room.X + 1 && y == room.Y + 1) ||
+                              (x == room.X + room.Width - 2 && y == room.Y + 1),
+                "storage" => x == room.X + room.Width - 2 &&
+                             (y == room.Y + 1 || y == room.Y + room.Height - 2),
+                "research" => x == room.X + 1 && y == room.Y + 1,
+                _ => (x == room.X + 1 && y == room.Y + 1) ||
+                     (x == room.X + 1 && y == room.Y + room.Height - 2) ||
+                     (x == room.X + room.Width - 2 && y == room.Y + 1)
+            };
+            if (!cutCorner) _walls[x, y] = false;
+        }
     }
 
     private void CarveRoom(int x, int y, int width, int height)
@@ -869,9 +1126,9 @@ internal sealed class ExplorationView : Control
         }
 
         int startX = Math.Max(0, (int)(_cameraX / TileSize) - 1);
-        int endX = Math.Min(MapColumns, (int)((_cameraX + ClientSize.Width) / TileSize) + 2);
+        int endX = Math.Min(MapColumns, (int)((_cameraX + ClientSize.Width / _cameraZoom) / TileSize) + 2);
         int startY = Math.Max(0, (int)(_cameraY / TileSize) - 1);
-        int endY = Math.Min(MapRows, (int)((_cameraY + ClientSize.Height) / TileSize) + 2);
+        int endY = Math.Min(MapRows, (int)((_cameraY + ClientSize.Height / _cameraZoom) / TileSize) + 2);
         for (int x = startX; x < endX; x++)
         for (int y = startY; y < endY; y++)
         {
@@ -904,8 +1161,16 @@ internal sealed class ExplorationView : Control
         foreach (RoomSpec room in Rooms)
         {
             using var roomTitleBrush = new SolidBrush(room.AccentColor);
-            DrawRoomTitle(graphics, font, roomTitleBrush, room.Title, room.X, room.Y);
+            int titleColumn = room.Id switch
+            {
+                "main_lab" => room.X + 3,
+                "research" => room.X + 3,
+                _ => room.X + 1
+            };
+            DrawRoomTitle(graphics, font, roomTitleBrush, room.Title, titleColumn, room.Y);
+            DrawSectorSign(graphics, room, font, labelBrush);
         }
+        DrawCorridorMarkings(graphics);
         DrawDoors(graphics, font);
     }
 
@@ -916,17 +1181,106 @@ internal sealed class ExplorationView : Control
         graphics.Clear(floorColor);
         Color panelColor = Color.FromArgb(Math.Min(255, floorColor.R + 3),
             Math.Min(255, floorColor.G + 5), Math.Min(255, floorColor.B + 7));
-        using var seamPen = new Pen(Color.FromArgb(90, 91, 135, 158), 1);
+        using var seamPen = new Pen(Color.FromArgb(105, 126, 153, 167), 1);
         using var panelBrush = new SolidBrush(panelColor);
-        using var glintPen = new Pen(Color.FromArgb(20, 71, 133, 157), 1);
+        using var glintPen = new Pen(Color.FromArgb(30, 99, 167, 185), 1);
+        using var damagePen = new Pen(Color.FromArgb(32, 2, 8, 14), 2);
         graphics.DrawRectangle(seamPen, 2, 2, TileSize - 5, TileSize - 5);
         graphics.FillRectangle(panelBrush, 7, 7, TileSize - 14, TileSize - 14);
         graphics.DrawLine(glintPen, 8, 10, TileSize - 9, 10);
         graphics.DrawLine(glintPen, 8, TileSize - 10, TileSize - 9, TileSize - 10);
-        using var rivetBrush = new SolidBrush(Color.FromArgb(93, 135, 156));
-        graphics.FillEllipse(rivetBrush, 4, 4, 2, 2);
-        graphics.FillEllipse(rivetBrush, TileSize - 6, TileSize - 6, 2, 2);
+        graphics.DrawLine(damagePen, 11, 31, 20, 27);
+        graphics.DrawLine(damagePen, 24, 30, 31, 33);
+        using var rivetBrush = new SolidBrush(Color.FromArgb(112, 148, 165));
+        graphics.FillEllipse(rivetBrush, 4, 4, 3, 3);
+        graphics.FillEllipse(rivetBrush, TileSize - 7, 4, 3, 3);
+        graphics.FillEllipse(rivetBrush, 4, TileSize - 7, 3, 3);
+        graphics.FillEllipse(rivetBrush, TileSize - 7, TileSize - 7, 3, 3);
         return texture;
+    }
+
+    private static void DrawSectorSign(Graphics graphics, RoomSpec room, Font font, Brush mutedBrush)
+    {
+        string code = room.Id switch
+        {
+            "control_center" => "A-01 // PUENTE",
+            "communications" => "A-02 // COMMS",
+            "main_lab" => "B-01 // BIO-LAB",
+            "storage" => "B-02 // MANTENIMIENTO",
+            "research" => "C-01 // MEDICAL",
+            _ => "C-02 // CONTENCIÓN"
+        };
+        Rectangle panel = new((room.X + room.Width - 5) * TileSize,
+            (room.Y + room.Height - 1) * TileSize + 8, 152, 23);
+        using var sign = new SolidBrush(Color.FromArgb(205, 8, 16, 25));
+        using var edge = new Pen(Color.FromArgb(115, room.AccentColor), 1);
+        graphics.FillRectangle(sign, panel);
+        graphics.DrawRectangle(edge, panel);
+        graphics.DrawString(code, font, mutedBrush, panel.X + 7, panel.Y + 4);
+    }
+
+    private void DrawCorridorMarkings(Graphics graphics)
+    {
+        using var pipePen = new Pen(Color.FromArgb(110, 69, 111, 129), 3);
+        using var edgePen = new Pen(Color.FromArgb(120, 36, 193, 220), 2);
+        using var hazardBrush = new SolidBrush(Color.FromArgb(95, 225, 154, 62));
+        foreach (Rectangle corridor in Corridors)
+        {
+            RectangleF area = new(corridor.X * TileSize, corridor.Y * TileSize,
+                corridor.Width * TileSize, corridor.Height * TileSize);
+            if (corridor.Width >= corridor.Height)
+            {
+                float center = area.Y + area.Height / 2f;
+                graphics.DrawLine(pipePen, area.X + 7, center, area.Right - 7, center);
+                graphics.DrawLine(edgePen, area.X + 7, center - 8, area.Right - 7, center - 8);
+            }
+            else
+            {
+                float center = area.X + area.Width / 2f;
+                graphics.DrawLine(pipePen, center, area.Y + 7, center, area.Bottom - 7);
+                graphics.DrawLine(edgePen, center - 8, area.Y + 7, center - 8, area.Bottom - 7);
+            }
+        }
+        foreach (DoorSpec door in Doors)
+        {
+            int hazardY = door.Y < 15 ? door.Y * TileSize + TileSize - 7 : door.Y * TileSize + 1;
+            Rectangle hazard = new(door.X * TileSize - 8, hazardY, 60, 6);
+            graphics.FillRectangle(hazardBrush, hazard);
+            for (int stripe = 0; stripe < 4; stripe++)
+                graphics.DrawLine(Pens.DarkOrange, hazard.X + stripe * 15, hazard.Bottom,
+                    hazard.X + stripe * 15 + 6, hazard.Y);
+        }
+    }
+
+    private void DrawStationLighting(Graphics graphics)
+    {
+        using var ambient = new SolidBrush(Color.FromArgb(26, 1, 6, 13));
+        graphics.FillRectangle(ambient, 0, 0, MapColumns * TileSize, MapRows * TileSize);
+        foreach (RoomSpec room in Rooms)
+        {
+            float x = (room.X + room.Width / 2f) * TileSize;
+            float y = (room.Y + 1.5f) * TileSize;
+            FillLightGlow(graphics, x, y, 126f, room.AccentColor, 46);
+            FillLightGlow(graphics, (room.X + room.Width - 2f) * TileSize,
+                (room.Y + room.Height - 2f) * TileSize, 82f, room.AccentColor, 28);
+        }
+
+        float emergencyPulse = 0.5f + 0.5f * MathF.Sin(_animationClock * 4.2f);
+        FillLightGlow(graphics, 18 * TileSize, 14 * TileSize,
+            150f, Color.FromArgb(255, 63, 50), (int)(18 + emergencyPulse * 38));
+    }
+
+    private static void FillLightGlow(Graphics graphics, float centerX, float centerY,
+        float radius, Color color, int alpha)
+    {
+        using var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddEllipse(centerX - radius, centerY - radius, radius * 2, radius * 2);
+        using var glow = new System.Drawing.Drawing2D.PathGradientBrush(path)
+        {
+            CenterColor = Color.FromArgb(alpha, color),
+            SurroundColors = new[] { Color.FromArgb(0, color) }
+        };
+        graphics.FillPath(glow, path);
     }
 
     private void DrawDoors(Graphics graphics, Font font)
@@ -944,6 +1298,12 @@ internal sealed class ExplorationView : Control
             Rectangle inset = new(door.X + 7, door.Y + 6, door.Width - 14, door.Height - 12);
             graphics.FillRectangle(insetBrush, inset);
             graphics.DrawRectangle(doorPen, inset);
+            graphics.DrawLine(doorPen, door.X + door.Width / 2, door.Y + 7,
+                door.X + door.Width / 2, door.Bottom - 7);
+            graphics.FillRectangle(open ? Brushes.Cyan : Brushes.OrangeRed,
+                door.X + 4, door.Y + door.Height / 2 - 2, 4, 4);
+            graphics.FillRectangle(open ? Brushes.Cyan : Brushes.OrangeRed,
+                door.Right - 8, door.Y + door.Height / 2 - 2, 4, 4);
             if (DistanceTo(specification) <= 110f)
             {
                 string marker = open ? "ABIERTO" : GetDoorShortLabel(specification);
@@ -954,55 +1314,301 @@ internal sealed class ExplorationView : Control
 
     private void DrawFurniture(Graphics graphics)
     {
-        using var shellBrush = new SolidBrush(Color.FromArgb(30, 54, 76));
-        using var insetBrush = new SolidBrush(Color.FromArgb(8, 21, 35));
-        using var edgePen = new Pen(Color.FromArgb(63, 111, 138), 1.4f);
-        using var amberBrush = new SolidBrush(Color.FromArgb(232, 166, 75));
-        int fixtureIndex = 0;
-        foreach (RectangleF piece in _furniture)
+        using var shellBrush = new SolidBrush(Color.FromArgb(31, 46, 57));
+        using var insetBrush = new SolidBrush(Color.FromArgb(8, 16, 24));
+        using var edgePen = new Pen(Color.FromArgb(93, 122, 139), 1.5f);
+        using var amberBrush = new SolidBrush(Color.FromArgb(220, 148, 68));
+        using var paleBrush = new SolidBrush(Color.FromArgb(95, 158, 184));
+        foreach (StationFixture fixture in _fixtures)
         {
-            Rectangle rect = Rectangle.Round(piece);
+            Rectangle rect = Rectangle.Round(fixture.Bounds);
             int roomTileX = Math.Clamp((int)(rect.X / TileSize), 0, MapColumns - 1);
             int roomTileY = Math.Clamp((int)(rect.Y / TileSize), 0, MapRows - 1);
-            RoomSpec room = GetRoomForTile(roomTileX, roomTileY) ?? Rooms[0];
+            RoomSpec room = GetRoom(fixture.RoomId);
             using var roomGlow = new Pen(Color.FromArgb(175, room.AccentColor), 2);
+            using var glass = new SolidBrush(Color.FromArgb(110, room.AccentColor));
             graphics.FillRectangle(shellBrush, rect);
             graphics.DrawRectangle(edgePen, rect);
-            graphics.FillRectangle(insetBrush, rect.X + 5, rect.Y + 5, rect.Width - 10, rect.Height - 9);
-            graphics.DrawLine(roomGlow, rect.X + 7, rect.Y + 7, rect.Right - 7, rect.Y + 7);
-            if (fixtureIndex % 3 == 0)
+            graphics.FillRectangle(insetBrush, rect.X + 4, rect.Y + 4, rect.Width - 8, rect.Height - 8);
+            switch (fixture.Kind)
             {
-                graphics.FillRectangle(Brushes.Cyan, rect.X + 8, rect.Y + 10, rect.Width - 16, 7);
-                graphics.DrawLine(Pens.White, rect.X + 11, rect.Y + 13, rect.Right - 11, rect.Y + 13);
-                graphics.DrawLine(edgePen, rect.X + 8, rect.Y + 21, rect.Right - 8, rect.Y + 21);
+                case "bridge":
+                    graphics.FillRectangle(glass, rect.X + 7, rect.Y + 7, rect.Width - 14, 9);
+                    graphics.DrawLine(Pens.LightCyan, rect.X + 9, rect.Y + 10, rect.Right - 9, rect.Y + 10);
+                    graphics.DrawLine(roomGlow, rect.X + 7, rect.Bottom - 7, rect.Right - 7, rect.Bottom - 7);
+                    break;
+                case "rack":
+                    for (int shelf = 1; shelf < 5; shelf++)
+                        graphics.DrawLine(edgePen, rect.X + 6, rect.Y + shelf * rect.Height / 5,
+                            rect.Right - 6, rect.Y + shelf * rect.Height / 5);
+                    for (int lamp = 0; lamp < 3; lamp++)
+                        graphics.FillRectangle(lamp == 0 ? amberBrush : glass, rect.X + 7,
+                            rect.Y + 7 + lamp * 11, 4, 5);
+                    break;
+                case "tank":
+                case "containment":
+                    graphics.FillEllipse(glass, rect.X + 8, rect.Y + 4, rect.Width - 16, rect.Height - 8);
+                    graphics.DrawEllipse(roomGlow, rect.X + 8, rect.Y + 4, rect.Width - 16, rect.Height - 8);
+                    graphics.DrawLine(edgePen, rect.X + 8, rect.Y + rect.Height / 2,
+                        rect.Right - 8, rect.Y + rect.Height / 2);
+                    if (fixture.Kind == "containment")
+                    {
+                        graphics.DrawLine(Pens.OrangeRed, rect.X + 10, rect.Y + 8,
+                            rect.Right - 10, rect.Bottom - 8);
+                        graphics.DrawLine(Pens.OrangeRed, rect.Right - 10, rect.Y + 8,
+                            rect.X + 10, rect.Bottom - 8);
+                    }
+                    break;
+                case "bed":
+                    graphics.FillRectangle(paleBrush, rect.X + 6, rect.Y + 8, rect.Width - 12, rect.Height - 16);
+                    graphics.DrawRectangle(roomGlow, rect.X + 5, rect.Y + 5, rect.Width - 10, rect.Height - 10);
+                    graphics.FillRectangle(Brushes.WhiteSmoke, rect.X + 8, rect.Y + 8, 12, 8);
+                    break;
+                case "crate":
+                    graphics.DrawLine(roomGlow, rect.X + 5, rect.Y + 5, rect.Right - 5, rect.Bottom - 5);
+                    graphics.DrawLine(roomGlow, rect.Right - 5, rect.Y + 5, rect.X + 5, rect.Bottom - 5);
+                    graphics.DrawLine(edgePen, rect.X + 5, rect.Y + rect.Height / 2,
+                        rect.Right - 5, rect.Y + rect.Height / 2);
+                    break;
+                case "cabinet":
+                    graphics.DrawLine(roomGlow, rect.X + rect.Width / 2, rect.Y + 5,
+                        rect.X + rect.Width / 2, rect.Bottom - 5);
+                    graphics.FillEllipse(amberBrush, rect.X + rect.Width / 2 - 2, rect.Y + rect.Height / 2, 4, 4);
+                    break;
+                default:
+                    graphics.FillRectangle(glass, rect.X + 6, rect.Y + 6, rect.Width - 12, 11);
+                    graphics.DrawLine(Pens.LightCyan, rect.X + 8, rect.Y + 10, rect.Right - 8, rect.Y + 10);
+                    graphics.DrawLine(edgePen, rect.X + 6, rect.Bottom - 8, rect.Right - 6, rect.Bottom - 8);
+                    break;
             }
-            else if (fixtureIndex % 3 == 1)
-            {
-                for (int shelf = 1; shelf < 4; shelf++)
-                    graphics.DrawLine(edgePen, rect.X + 7, rect.Y + shelf * 5, rect.Right - 7, rect.Y + shelf * 5);
-                graphics.DrawLine(roomGlow, rect.X + rect.Width / 2, rect.Y + 5,
-                    rect.X + rect.Width / 2, rect.Bottom - 5);
-            }
-            else
-            {
-                using var equipmentGlass = new SolidBrush(Color.FromArgb(95, room.AccentColor));
-                graphics.FillEllipse(equipmentGlass, rect.X + 9, rect.Y + 8, rect.Width - 18, rect.Height - 14);
-                graphics.DrawEllipse(roomGlow, rect.X + 9, rect.Y + 8, rect.Width - 18, rect.Height - 14);
-            }
-
-            for (int lamp = 0; lamp < 3; lamp++)
-            {
-                Brush light = lamp == 0 ? amberBrush : Brushes.Cyan;
-                graphics.FillEllipse(light, rect.X + 8 + lamp * 7, rect.Bottom - 7, 3, 3);
-            }
-            fixtureIndex++;
+            graphics.FillEllipse(amberBrush, rect.X + 6, rect.Bottom - 6, 3, 3);
+            graphics.FillEllipse(glass, rect.Right - 9, rect.Bottom - 6, 3, 3);
         }
     }
 
+    private void DrawEnemies(Graphics graphics)
+    {
+        using var shell = new SolidBrush(Color.FromArgb(30, 40, 50));
+        using var shadow = new SolidBrush(Color.FromArgb(110, 1, 3, 8));
+        using var eye = new SolidBrush(Color.FromArgb(255, 255, 88, 74));
+        using var trim = new Pen(Color.FromArgb(225, 255, 126, 91), 2);
+        using var nameFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+        foreach (EnemyActor enemy in _enemies)
+        {
+            if (enemy.Save.IsDead) continue;
+            float bob = MathF.Sin(_animationClock * 4.5f + enemy.Phase) * 2f;
+            float x = enemy.Save.X;
+            float y = enemy.Save.Y + bob;
+            using var aura = new SolidBrush(Color.FromArgb(enemy.HitFlashRemaining > 0 ? 130 : enemy.Save.Alerted ? 66 : 33,
+                enemy.HitFlashRemaining > 0 ? 245 : 255, enemy.HitFlashRemaining > 0 ? 245 : 55,
+                enemy.HitFlashRemaining > 0 ? 255 : 66));
+            graphics.FillEllipse(aura, x - 22, y - 19, 44, 38);
+            graphics.FillEllipse(shadow, x - 15, y + 8, 30, 9);
+
+            if (enemy.Kind == "specimen")
+            {
+                PointF[] body =
+                {
+                    new(x, y - 16), new(x + 11, y - 7), new(x + 15, y + 5),
+                    new(x + 6, y + 13), new(x - 8, y + 12), new(x - 15, y + 2), new(x - 10, y - 9)
+                };
+                using var membrane = new SolidBrush(Color.FromArgb(184, 92, 46, 84));
+                graphics.FillPolygon(membrane, body);
+                graphics.DrawPolygon(trim, body);
+                graphics.DrawLine(trim, x - 9, y - 7, x - 18, y - 14);
+                graphics.DrawLine(trim, x + 9, y - 7, x + 18, y - 14);
+                graphics.DrawLine(trim, x - 8, y + 8, x - 15, y + 15);
+                graphics.DrawLine(trim, x + 8, y + 8, x + 15, y + 15);
+            }
+            else
+            {
+                graphics.FillRectangle(shell, x - 14, y - 11, 28, 20);
+                graphics.DrawRectangle(trim, x - 14, y - 11, 28, 20);
+                graphics.DrawLine(trim, x - 11, y - 8, x - 18, y - 13);
+                graphics.DrawLine(trim, x + 11, y - 8, x + 18, y - 13);
+                graphics.DrawLine(trim, x - 10, y + 7, x - 16, y + 13);
+                graphics.DrawLine(trim, x + 10, y + 7, x + 16, y + 13);
+            }
+            graphics.FillEllipse(eye, x - 4, y - 4, 8, 5);
+            if (enemy.Save.Alerted || enemy.HitFlashRemaining > 0)
+            {
+                RectangleF healthTrack = new(x - 17, y - 25, 34, 4);
+                using var track = new SolidBrush(Color.FromArgb(205, 24, 27, 34));
+                using var health = new SolidBrush(Color.FromArgb(235, 255, 86, 78));
+                graphics.FillRectangle(track, healthTrack);
+                graphics.FillRectangle(health, healthTrack.X, healthTrack.Y,
+                    healthTrack.Width * Math.Clamp(enemy.Save.Health, 0, 100) / 100f, healthTrack.Height);
+            }
+            if (enemy.Save.Alerted && DistanceToWorld(enemy.Save.X, enemy.Save.Y) < 150f)
+                graphics.DrawString(enemy.Name, nameFont, Brushes.OrangeRed, x - 45, y - 29);
+        }
+    }
+
+    private void UpdateEnemies(float elapsed)
+    {
+        _enemyPathTimer -= elapsed;
+        if (_enemyPathTimer <= 0)
+        {
+            _enemyPathTimer = 0.28f;
+            foreach (EnemyActor enemy in _enemies)
+                if (!enemy.Save.IsDead && enemy.Save.Alerted) SetEnemyNextPathPoint(enemy);
+        }
+
+        foreach (EnemyActor enemy in _enemies)
+        {
+            if (enemy.Save.IsDead) continue;
+            enemy.HitFlashRemaining = Math.Max(0f, enemy.HitFlashRemaining - elapsed);
+            float distance = DistanceToWorld(enemy.Save.X, enemy.Save.Y);
+            bool canSeePlayer = distance <= EnemyDetectionRadius && HasLineOfSight(enemy.Save.X, enemy.Save.Y,
+                State.PlayerX, State.PlayerY);
+            if (!enemy.Save.Alerted && canSeePlayer)
+            {
+                enemy.Save.Alerted = true;
+                _statusMessage = $"AURA // AMENAZA DETECTADA: {enemy.Name}.";
+                StateChanged?.Invoke(this, EventArgs.Empty);
+            }
+
+            enemy.AttackCooldown = Math.Max(0, enemy.AttackCooldown - elapsed);
+            if (enemy.Save.Alerted && distance <= EnemyContactDistance && canSeePlayer)
+            {
+                if (enemy.AttackCooldown <= 0)
+                {
+                    enemy.AttackCooldown = EnemyAttackInterval;
+                    _playerHitTimer = 0.42f;
+                    _statusMessage = $"ALERTA DE IMPACTO // {enemy.Name}: integridad del traje -12%.";
+                    ActionCompleted?.Invoke(this, new ExplorationActionEventArgs(
+                        $"Impacto de amenaza: {enemy.Id}", hullChange: -12));
+                    StateChanged?.Invoke(this, EventArgs.Empty);
+                    if (PlayerDefeated) break;
+                }
+                continue;
+            }
+
+            if (!enemy.Save.Alerted || enemy.NextX < 0 || enemy.NextY < 0) continue;
+            float dx = enemy.NextX - enemy.Save.X;
+            float dy = enemy.NextY - enemy.Save.Y;
+            float length = MathF.Sqrt(dx * dx + dy * dy);
+            if (length < 2f)
+            {
+                enemy.NextX = -1;
+                enemy.NextY = -1;
+                continue;
+            }
+
+            float distanceToMove = Math.Min(length, enemy.Speed * elapsed);
+            float nextX = enemy.Save.X + dx / length * distanceToMove;
+            float nextY = enemy.Save.Y + dy / length * distanceToMove;
+            if (!HitsWall(nextX, enemy.Save.Y)) enemy.Save.X = nextX;
+            if (!HitsWall(enemy.Save.X, nextY)) enemy.Save.Y = nextY;
+            Invalidate();
+        }
+    }
+
+    private void SetEnemyNextPathPoint(EnemyActor enemy)
+    {
+        enemy.NextX = -1;
+        enemy.NextY = -1;
+        int targetX = Math.Clamp((int)(State.PlayerX / TileSize), 0, MapColumns - 1);
+        int targetY = Math.Clamp((int)(State.PlayerY / TileSize), 0, MapRows - 1);
+        int enemyX = Math.Clamp((int)(enemy.Save.X / TileSize), 0, MapColumns - 1);
+        int enemyY = Math.Clamp((int)(enemy.Save.Y / TileSize), 0, MapRows - 1);
+        if (enemyX == targetX && enemyY == targetY)
+        {
+            enemy.NextX = State.PlayerX;
+            enemy.NextY = State.PlayerY;
+            return;
+        }
+
+        int[,] distance = new int[MapColumns, MapRows];
+        for (int x = 0; x < MapColumns; x++)
+        for (int y = 0; y < MapRows; y++) distance[x, y] = -1;
+        if (!CanOccupyEnemyTile(targetX, targetY)) return;
+
+        var queue = new Queue<Point>();
+        queue.Enqueue(new Point(targetX, targetY));
+        distance[targetX, targetY] = 0;
+        Point[] neighbors = { new(1, 0), new(-1, 0), new(0, 1), new(0, -1) };
+        while (queue.Count > 0)
+        {
+            Point current = queue.Dequeue();
+            foreach (Point offset in neighbors)
+            {
+                int x = current.X + offset.X;
+                int y = current.Y + offset.Y;
+                if (x < 0 || x >= MapColumns || y < 0 || y >= MapRows || distance[x, y] >= 0 ||
+                    !CanOccupyEnemyTile(x, y)) continue;
+                distance[x, y] = distance[current.X, current.Y] + 1;
+                queue.Enqueue(new Point(x, y));
+            }
+        }
+
+        if (distance[enemyX, enemyY] <= 0) return;
+        Point best = new(enemyX, enemyY);
+        foreach (Point offset in neighbors)
+        {
+            int x = enemyX + offset.X;
+            int y = enemyY + offset.Y;
+            if (x < 0 || x >= MapColumns || y < 0 || y >= MapRows || distance[x, y] < 0 ||
+                distance[x, y] >= distance[best.X, best.Y]) continue;
+            best = new Point(x, y);
+        }
+        if (best.X != enemyX || best.Y != enemyY)
+        {
+            enemy.NextX = best.X * TileSize + TileSize / 2f;
+            enemy.NextY = best.Y * TileSize + TileSize / 2f;
+        }
+    }
+
+    private bool CanOccupyEnemyTile(int x, int y)
+    {
+        if (_walls[x, y]) return false;
+        float centerX = x * TileSize + TileSize / 2f;
+        float centerY = y * TileSize + TileSize / 2f;
+        return !_furniture.Any(piece => piece.IntersectsWith(
+            new RectangleF(centerX - 8, centerY - 8, 16, 16)));
+    }
+
+    private void RestoreEnemies()
+    {
+        State.Enemies ??= new List<EnemySaveState>();
+        EnemySpawn[] spawns =
+        {
+            new("security_drone", "DRON DE SEGURIDAD", "drone", 23, 6, 74f),
+            new("medical_sentinel", "SENTINELA DE AISLAMIENTO", "drone", 20, 24, 65f),
+            new("containment_specimen", "ORGANISMO DE CONTENCIÓN", "specimen", 31, 25, 84f)
+        };
+        _enemies.Clear();
+        foreach (EnemySpawn spawn in spawns)
+        {
+            EnemySaveState? saved = State.Enemies.FirstOrDefault(item =>
+                item.Id.Equals(spawn.Id, StringComparison.OrdinalIgnoreCase));
+            if (saved is null)
+            {
+                saved = new EnemySaveState
+                {
+                    Id = spawn.Id,
+                    X = spawn.TileX * TileSize + TileSize / 2f,
+                    Y = spawn.TileY * TileSize + TileSize / 2f
+                };
+                State.Enemies.Add(saved);
+            }
+            saved.Health = Math.Clamp(saved.Health, 0, 100);
+            if (saved.Health == 0) saved.IsDead = true;
+            _enemies.Add(new EnemyActor(spawn.Id, spawn.Name, spawn.Kind, spawn.Speed, saved));
+        }
+    }
+
+    private static EnemySpawn GetEnemySpawn(string id) => id switch
+    {
+        "security_drone" => new("security_drone", "DRON DE SEGURIDAD", "drone", 23, 6, 74f),
+        "medical_sentinel" => new("medical_sentinel", "SENTINELA DE AISLAMIENTO", "drone", 20, 24, 65f),
+        _ => new("containment_specimen", "ORGANISMO DE CONTENCIÓN", "specimen", 31, 25, 84f)
+    };
+
     private void DrawAnomalyField(Graphics graphics)
     {
-        float centerX = 31 * TileSize + TileSize / 2f;
-        float centerY = 23 * TileSize + TileSize / 2f;
+        float centerX = 32 * TileSize + TileSize / 2f;
+        float centerY = 25 * TileSize + TileSize / 2f;
         float pulseSpeed = State.ActiveWorldEvents.Contains("anomaly_instability", StringComparer.OrdinalIgnoreCase) ? 3.2f : 1.8f;
         float pulse = 3f + MathF.Sin(_animationClock * pulseSpeed) * 3f;
         bool unstable = State.ActiveWorldEvents.Contains("anomaly_instability", StringComparer.OrdinalIgnoreCase);
@@ -1042,7 +1648,7 @@ internal sealed class ExplorationView : Control
             float alpha = 0.5f + 0.5f * MathF.Sin(_animationClock * 9f);
             using var surgeBrush = new SolidBrush(Color.FromArgb((int)(40 + alpha * 95), 255, 151, 62));
             float x = 34 * TileSize + TileSize / 2f;
-            float y = 7 * TileSize + TileSize / 2f;
+            float y = 17 * TileSize + TileSize / 2f;
             graphics.FillEllipse(surgeBrush, x - 24, y - 24, 48, 48);
             using var sparkPen = new Pen(Color.FromArgb(170, 255, 200, 118), 2);
             graphics.DrawLine(sparkPen, x - 14, y - 8, x - 3, y + 2);
@@ -1052,8 +1658,8 @@ internal sealed class ExplorationView : Control
         if (State.ActiveWorldEvents.Contains("life_support_failure", StringComparer.OrdinalIgnoreCase))
         {
             using var alertPen = new Pen(Color.FromArgb(145, 255, 82, 91), 2);
-            float x = 4 * TileSize + TileSize / 2f;
-            float y = 6 * TileSize + TileSize / 2f;
+            float x = 11 * TileSize + TileSize / 2f;
+            float y = 5 * TileSize + TileSize / 2f;
             graphics.DrawEllipse(alertPen, x - 20, y - 20, 40, 40);
         }
 
@@ -1061,7 +1667,7 @@ internal sealed class ExplorationView : Control
         {
             float pulse = 0.5f + 0.5f * MathF.Sin(_animationClock * 4f);
             using var lockdownPen = new Pen(Color.FromArgb((int)(90 + pulse * 150), 255, 111, 84), 2);
-            float x = 22 * TileSize + TileSize / 2f;
+            float x = 23 * TileSize + TileSize / 2f;
             float y = 24 * TileSize + TileSize / 2f;
             graphics.DrawRectangle(lockdownPen, x - 22, y - 20, 44, 40);
         }
@@ -1184,34 +1790,89 @@ internal sealed class ExplorationView : Control
     {
         float x = State.PlayerX;
         float y = State.PlayerY;
-        using var glowBrush = new SolidBrush(Color.FromArgb(55, 40, 224, 255));
+        using var glowBrush = new SolidBrush(_playerHitTimer > 0
+            ? Color.FromArgb(140, 255, 53, 66)
+            : Color.FromArgb(55, 40, 224, 255));
         graphics.FillEllipse(glowBrush, x - 22, y - 22, 44, 44);
         int frame = _isMoving ? (int)(_animationClock * 9) % 3 : 0;
         Bitmap sprite = _sprites.Get(_facing, _isMoving, frame, _interactionTimer > 0);
         graphics.DrawImage(sprite, x - sprite.Width / 2f, y - sprite.Height / 2f, sprite.Width, sprite.Height);
+        DrawEnergyPistol(graphics, x, y);
+    }
+
+    private void DrawEnergyPistol(Graphics graphics, float x, float y)
+    {
+        using var body = new SolidBrush(Color.FromArgb(208, 29, 49, 66));
+        using var outline = new Pen(Color.FromArgb(225, 91, 210, 235), 1.5f);
+        using var emitter = new SolidBrush(Color.FromArgb(245, 89, 235, 255));
+        RectangleF weapon = _facing switch
+        {
+            ExplorerDirection.Up => new RectangleF(x - 5, y - 18, 10, 17),
+            ExplorerDirection.Left => new RectangleF(x - 18, y - 4, 17, 9),
+            ExplorerDirection.Right => new RectangleF(x + 1, y - 4, 17, 9),
+            _ => new RectangleF(x - 5, y + 1, 10, 17)
+        };
+        graphics.FillRectangle(body, weapon);
+        graphics.DrawRectangle(outline, weapon.X, weapon.Y, weapon.Width, weapon.Height);
+        RectangleF muzzle = _facing switch
+        {
+            ExplorerDirection.Up => new RectangleF(weapon.X + 2, weapon.Y - 3, 6, 3),
+            ExplorerDirection.Left => new RectangleF(weapon.X - 3, weapon.Y + 2, 3, 5),
+            ExplorerDirection.Right => new RectangleF(weapon.Right, weapon.Y + 2, 3, 5),
+            _ => new RectangleF(weapon.X + 2, weapon.Bottom, 6, 3)
+        };
+        graphics.FillRectangle(emitter, muzzle);
+    }
+
+    private void DrawCombatEffects(Graphics graphics)
+    {
+        if (_muzzleFlashTimer <= 0) return;
+        int alpha = Math.Clamp((int)(255 * _muzzleFlashTimer / 0.12f), 0, 255);
+        using var beam = new Pen(Color.FromArgb(alpha, 66, 228, 255), 4f);
+        using var core = new Pen(Color.FromArgb(alpha, 218, 252, 255), 1.5f);
+        using var impact = new SolidBrush(Color.FromArgb(alpha, 123, 247, 255));
+        graphics.DrawLine(beam, _shotStart, _muzzleFlashEnd);
+        graphics.DrawLine(core, _shotStart, _muzzleFlashEnd);
+        graphics.FillEllipse(impact, _muzzleFlashEnd.X - 6, _muzzleFlashEnd.Y - 6, 12, 12);
     }
 
     private void DrawOverlay(Graphics graphics)
     {
         using var panelBrush = new SolidBrush(Color.FromArgb(220, 7, 18, 34));
         using var borderPen = new Pen(Color.FromArgb(40, 190, 225), 1);
-        using var titleFont = new Font("Segoe UI", 9f, FontStyle.Bold);
-        using var textFont = new Font("Segoe UI", 8.5f, FontStyle.Regular);
+        using var titleFont = new Font("Segoe UI", 10f, FontStyle.Bold);
+        using var textFont = new Font("Segoe UI", 9.5f, FontStyle.Regular);
         using var titleBrush = new SolidBrush(NexusTheme.Accent);
         using var textBrush = new SolidBrush(NexusTheme.Text);
 
-        Rectangle status = new(12, 12, Math.Max(120, Math.Min(ClientSize.Width - 24,
-            ClientSize.Width >= 590 ? 322 : ClientSize.Width - 24)), 66);
+        int statusWidth = ClientSize.Width >= 590
+            ? Math.Min(ClientSize.Width - 24, 350)
+            : Math.Max(150, ClientSize.Width / 2 - 18);
+        Rectangle status = new(12, 12, statusWidth, 72);
         graphics.FillRectangle(panelBrush, status);
         graphics.DrawRectangle(borderPen, status);
         graphics.DrawString(CurrentRoomName(), titleFont, titleBrush, status.X + 10, status.Y + 7);
         graphics.DrawString(_statusMessage, textFont, textBrush,
-            new RectangleF(status.X + 10, status.Y + 28, status.Width - 20, 32));
+            new RectangleF(status.X + 10, status.Y + 30, status.Width - 20, 38));
 
         DrawGameHud(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
 
+        Rectangle fireButton = GetShootButtonBounds();
+        using (var fireBrush = new SolidBrush(Color.FromArgb(230, 11, 39, 58)))
+        using (var firePen = new Pen(PlayerDefeated ? Color.DimGray : Color.FromArgb(210, 57, 214, 242), 2))
+        using (var fireText = new SolidBrush(PlayerDefeated ? Color.Gray : Color.FromArgb(173, 246, 255)))
+        using (var fireFont = new Font("Segoe UI", 11f, FontStyle.Bold))
+        {
+            graphics.FillRectangle(fireBrush, fireButton);
+            graphics.DrawRectangle(firePen, fireButton);
+            graphics.DrawString(_shotCooldown > 0 ? "RECARGANDO" : "DISPARAR",
+                fireFont, fireText, fireButton.X + 17, fireButton.Y + 9);
+        }
+        graphics.DrawString("RATÓN: APUNTAR", textFont, titleBrush,
+            fireButton.Right + 8, fireButton.Y + 11);
+
         string prompt = GetPrompt();
-        Rectangle help = new(12, Math.Max(12, ClientSize.Height - 35), ClientSize.Width - 24, 23);
+        Rectangle help = new(12, Math.Max(12, ClientSize.Height - 36), ClientSize.Width - 24, 26);
         graphics.FillRectangle(panelBrush, help);
         graphics.DrawRectangle(borderPen, help);
         graphics.DrawString("W A S D / FLECHAS: MOVER     E: INTERACTUAR     J: OBJETIVOS     " + prompt,
@@ -1226,6 +1887,28 @@ internal sealed class ExplorationView : Control
             DrawChallenge(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
         if (_activeDialogue is not null)
             DrawDialogue(graphics, panelBrush, borderPen, titleFont, textFont, titleBrush, textBrush);
+        if (PlayerDefeated)
+            DrawDefeatOverlay(graphics, titleFont, textFont, textBrush);
+    }
+
+    private Rectangle GetShootButtonBounds() => new(12, Math.Max(12, ClientSize.Height - 88), 164, 42);
+
+    private void DrawDefeatOverlay(Graphics graphics, Font titleFont, Font textFont, Brush textBrush)
+    {
+        Rectangle panel = new(Math.Max(12, ClientSize.Width / 2 - 205),
+            Math.Max(12, ClientSize.Height / 2 - 74), Math.Min(410, ClientSize.Width - 24), 148);
+        using var shade = new SolidBrush(Color.FromArgb(180, 1, 3, 9));
+        using var alert = new SolidBrush(Color.FromArgb(245, 13, 15, 25));
+        using var alertBorder = new Pen(Color.FromArgb(245, 255, 76, 81), 2);
+        graphics.FillRectangle(shade, ClientRectangle);
+        graphics.FillRectangle(alert, panel);
+        graphics.DrawRectangle(alertBorder, panel);
+        graphics.DrawString("TRAJE COMPROMETIDO", titleFont, Brushes.OrangeRed,
+            panel.X + 18, panel.Y + 20);
+        graphics.DrawString("La integridad llegó a cero. La expedición queda detenida.",
+            textFont, textBrush, new RectangleF(panel.X + 18, panel.Y + 52, panel.Width - 36, 38));
+        graphics.DrawString("Guarda el estado o vuelve al menú para iniciar otra expedición.",
+            textFont, textBrush, new RectangleF(panel.X + 18, panel.Y + 95, panel.Width - 36, 32));
     }
 
     private void DrawChallenge(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
@@ -1361,18 +2044,15 @@ internal sealed class ExplorationView : Control
     private void DrawGameHud(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
         Font textFont, Brush titleBrush, Brush textBrush)
     {
-        if (ClientSize.Width < 590)
-        {
-            return;
-        }
-
-        int x = ClientSize.Width - 184;
-        var hud = new Rectangle(x, 12, 172, 154);
+        int panelWidth = Math.Max(165, Math.Min(210, ClientSize.Width / 2 - 24));
+        int x = ClientSize.Width - panelWidth - 12;
+        var hud = new Rectangle(x, 12, panelWidth, 184);
         graphics.FillRectangle(panelBrush, hud);
         graphics.DrawRectangle(borderPen, hud);
         graphics.DrawString("NEXUS // EXPLORACIÓN", titleFont, titleBrush, x + 8, 18);
         DrawMiniBar(graphics, x + 8, 42, "O₂", _oxygen, Color.FromArgb(55, 213, 247), textFont, textBrush);
-        DrawMiniBar(graphics, x + 8, 62, "CASCO", _hull, Color.FromArgb(86, 177, 255), textFont, textBrush);
+        DrawMiniBar(graphics, x + 8, 62, "VIDA", _hull, Color.FromArgb(255, 98, 93), textFont, textBrush,
+            showPoints: true);
         DrawMiniBar(graphics, x + 8, 82, "DATOS", _data, Color.FromArgb(96, 236, 187), textFont, textBrush);
 
         string objective = State.CompletedObjectives.Contains("anomaly_terminal", StringComparer.OrdinalIgnoreCase)
@@ -1388,8 +2068,11 @@ internal sealed class ExplorationView : Control
         graphics.DrawString(inventory, textFont, textBrush, x + 8, 126);
         int discoveredRooms = Rooms.Count(room => State.ExploredRooms.Contains(room.Id, StringComparer.OrdinalIgnoreCase));
         graphics.DrawString($"ZONAS: {discoveredRooms}/{Rooms.Length}", textFont, titleBrush, x + 8, 145);
+        graphics.DrawString("ARMA: PULSO IÓNICO  //  50 D", textFont, titleBrush, x + 8, 159);
 
-        var map = new Rectangle(ClientSize.Width - 176, 176, 164, 105);
+        int mapY = hud.Bottom + 7;
+        int mapHeight = Math.Min(132, Math.Max(70, ClientSize.Height - mapY - 44));
+        var map = new Rectangle(x, mapY, panelWidth, mapHeight);
         graphics.FillRectangle(panelBrush, map);
         graphics.DrawRectangle(borderPen, map);
         DrawMiniMap(graphics, map);
@@ -1410,7 +2093,7 @@ internal sealed class ExplorationView : Control
     }
 
     private static void DrawMiniBar(Graphics graphics, int x, int y, string label, int value,
-        Color color, Font font, Brush textBrush)
+        Color color, Font font, Brush textBrush, bool showPoints = false)
     {
         graphics.DrawString(label, font, textBrush, x, y);
         int barX = x + 48;
@@ -1418,7 +2101,7 @@ internal sealed class ExplorationView : Control
         using var fill = new SolidBrush(color);
         graphics.FillRectangle(track, barX, y + 3, 74, 8);
         graphics.FillRectangle(fill, barX, y + 3, (int)(74 * value / 100f), 8);
-        graphics.DrawString($"{value}%", font, textBrush, barX + 78, y);
+        graphics.DrawString(showPoints ? $"{value} PT" : $"{value}%", font, textBrush, barX + 78, y);
     }
 
     private void DrawMiniMap(Graphics graphics, Rectangle bounds)
@@ -1442,14 +2125,10 @@ internal sealed class ExplorationView : Control
 
         if (State.ExploredRooms.Contains("central_corridor", StringComparer.OrdinalIgnoreCase))
         {
-            graphics.FillRectangle(hallBrush, mapX + 2 * scaleX, mapY + 13 * scaleY,
-                34 * scaleX, 3 * scaleY);
-            foreach (int column in ConnectorColumns)
+            foreach (Rectangle corridor in Corridors)
             {
-                graphics.FillRectangle(hallBrush, mapX + column * scaleX, mapY + 10 * scaleY,
-                    scaleX, 3 * scaleY);
-                graphics.FillRectangle(hallBrush, mapX + column * scaleX, mapY + 16 * scaleY,
-                    scaleX, 4 * scaleY);
+                graphics.FillRectangle(hallBrush, mapX + corridor.X * scaleX, mapY + corridor.Y * scaleY,
+                    corridor.Width * scaleX, corridor.Height * scaleY);
             }
         }
 
@@ -1477,6 +2156,17 @@ internal sealed class ExplorationView : Control
 
         graphics.FillEllipse(playerBrush, mapX + State.PlayerX / TileSize * scaleX - 3,
             mapY + State.PlayerY / TileSize * scaleY - 3, 6, 6);
+
+        foreach (EnemyActor enemy in _enemies)
+        {
+            string roomId = GetRoomIdAtTile((int)(enemy.Save.X / TileSize), (int)(enemy.Save.Y / TileSize)) ?? string.Empty;
+            if (!State.ExploredRooms.Contains(roomId, StringComparer.OrdinalIgnoreCase)) continue;
+            using var threatBrush = new SolidBrush(enemy.Save.Alerted
+                ? Color.FromArgb(255, 83, 66)
+                : Color.FromArgb(188, 116, 76));
+            graphics.FillEllipse(threatBrush, mapX + enemy.Save.X / TileSize * scaleX - 2.5f,
+                mapY + enemy.Save.Y / TileSize * scaleY - 2.5f, 5, 5);
+        }
     }
 
     private void DrawInventory(Graphics graphics, Brush panelBrush, Pen borderPen, Font titleFont,
@@ -1633,6 +2323,13 @@ internal sealed class ExplorationView : Control
 
     private float DistanceTo(DoorSpec door) => DistanceTo(door.X, door.Y);
 
+    private float DistanceToWorld(float x, float y)
+    {
+        float dx = State.PlayerX - x;
+        float dy = State.PlayerY - y;
+        return MathF.Sqrt(dx * dx + dy * dy);
+    }
+
     private float DistanceTo(int tileX, int tileY)
     {
         float x = tileX * TileSize + TileSize / 2f;
@@ -1719,15 +2416,9 @@ internal sealed class ExplorationView : Control
     {
         RoomSpec? room = GetRoomForTile(x, y);
         if (room is not null) return room.Id;
-        if (y is >= 13 and <= 15 && x is >= 2 and < 36) return "central_corridor";
-        foreach (int column in ConnectorColumns)
-        {
-            if (x != column) continue;
-            DoorSpec? connector = Doors.FirstOrDefault(door => door.X == column &&
-                ((y is >= 9 and <= 12 && door.Y == 9) || (y is >= 16 and <= 20 && door.Y == 20)));
-            if (connector is not null) return connector.RoomId;
-        }
-        return null;
+        DoorSpec? door = Doors.FirstOrDefault(candidate => candidate.X == x && candidate.Y == y);
+        if (door is not null) return door.RoomId;
+        return Corridors.Any(corridor => corridor.Contains(x, y)) ? "central_corridor" : null;
     }
 
     private void NormalizeState()
@@ -1746,6 +2437,13 @@ internal sealed class ExplorationView : Control
         State.CompletedWorldEvents ??= new List<string>();
         State.CompletedChallenges ??= new List<string>();
         State.WorldEventClocks ??= new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+        State.Enemies ??= new List<EnemySaveState>();
+        foreach (EnemySaveState enemy in State.Enemies)
+        {
+            enemy.Id ??= string.Empty;
+            enemy.X = Math.Clamp(enemy.X, TileSize * 2f, (MapColumns - 2) * TileSize);
+            enemy.Y = Math.Clamp(enemy.Y, TileSize * 2f, (MapRows - 2) * TileSize);
+        }
 
         // Translate names and the former security-door flag from earlier saved JSON snapshots.
         var legacyRooms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -1805,6 +2503,42 @@ internal sealed class ExplorationView : Control
     {
         if (!values.Contains(value, StringComparer.OrdinalIgnoreCase))
             values.Add(value);
+    }
+
+    private static StationFixture Fixture(string roomId, int tileX, int tileY, int tileWidth, string kind)
+    {
+        float width = tileWidth * TileSize - 10f;
+        float height = 30f;
+        float x = tileX * TileSize + (TileSize - width) / 2f;
+        float y = tileY * TileSize + (TileSize - height) / 2f;
+        return new StationFixture(roomId, new RectangleF(x, y, width, height), kind);
+    }
+
+    private sealed record StationFixture(string RoomId, RectangleF Bounds, string Kind);
+    private sealed record EnemySpawn(string Id, string Name, string Kind, int TileX, int TileY, float Speed);
+
+    private sealed class EnemyActor
+    {
+        public string Id { get; }
+        public string Name { get; }
+        public string Kind { get; }
+        public float Speed { get; }
+        public EnemySaveState Save { get; }
+        public float Phase { get; }
+        public float AttackCooldown { get; set; }
+        public float HitFlashRemaining { get; set; }
+        public float NextX { get; set; } = -1;
+        public float NextY { get; set; } = -1;
+
+        public EnemyActor(string id, string name, string kind, float speed, EnemySaveState save)
+        {
+            Id = id;
+            Name = name;
+            Kind = kind;
+            Speed = speed;
+            Save = save;
+            Phase = (id.GetHashCode(StringComparison.Ordinal) & 0x7fffffff) % 100 / 10f;
+        }
     }
 
     private sealed record RoomSpec(string Id, string Title, int X, int Y, int Width, int Height,

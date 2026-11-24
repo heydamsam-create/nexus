@@ -1,5 +1,7 @@
 # Arquitectura propuesta para NEXUS
 
+> Documento histórico de propuesta. La arquitectura descrita aquí no es la que está implementada actualmente. Para la aplicación vigente, consulta [arquitectura-actual.md](arquitectura-actual.md).
+
 ## 1. Objetivo
 
 Evolucionar el juego de consola de H3 hacia una aplicación de escritorio Windows Forms, conservando las reglas del juego y agregando persistencia SQL Server. Se recomienda una separación lógica en tres capas para evitar que la interfaz dependa directamente de la base de datos.

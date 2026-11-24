@@ -29,7 +29,7 @@ namespace NEXUS_WindowsForms.Services
         // Cadena de conexión hacia tu servidor local SQL Server
         private readonly string _connectionString =
             Environment.GetEnvironmentVariable("NEXUS_SQL_CONNECTION_STRING")
-            ?? @"Server=DESKTOP-LCFKC8Q\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;";
+            ?? @"Server=localhost\SQLEXPRESS;Database=NexusDB;Trusted_Connection=True;TrustServerCertificate=True;";
 
         public SqlConnection GetConnection()
         {

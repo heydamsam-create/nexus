@@ -1,74 +1,82 @@
-# Modelo de resultado e historial JSON
+# Modelo de datos actual: expediciones y resultados
 
-## Estado
+> El nombre histórico del archivo contiene “propuesto”, pero la aplicación actual sí implementa persistencia SQL Server. Esta página describe el código y los scripts presentes; no es un diseño futuro.
 
-El proyecto Windows Forms ya implementa el guardado local de resultados finalizados mediante JSON. El esquema SQL descrito en versiones anteriores de este documento era una propuesta para partidas completas; no está conectado y no forma parte del modelo actual. Esta página documenta lo que el código implementa hoy.
+## SQL Server
+
+`DatabaseService` usa ADO.NET con `Microsoft.Data.SqlClient`. El esquema definido en `database/01_CreateDatabase.sql` contiene:
+
+| Tabla | Datos que almacena |
+|---|---|
+| `Cadetes` | Nombre, rango, expediciones completadas y mejor puntuación. |
+| `Expediciones` | Ranura, sector, etapa, estado (`EnCurso`/`Completada`/`Abandonada`) y fechas. |
+| `EstadoNave` | Oxígeno, integridad del casco, datos, banderas de ruta y `EstadoExploracionJson`. |
+| `DecisionesExpedicion` | Decisiones de una expedición, ordenadas por número de paso. |
+| `BitacoraMisiones` | Resultado final: misión, desenlace, resumen, puntuación, recursos y fecha. Puede vincularse a una expedición. |
+
+`database/02_AddExplorationSave.sql` agrega la columna nullable `EstadoExploracionJson NVARCHAR(MAX)` si no existe. `DatabaseService` también comprueba esa columna y la agrega durante operaciones de guardado/carga si falta.
 
 ## `MissionResult`
 
-`NEXUS_WindowsForms/Models/MissionResult.cs` declara las propiedades públicas que `System.Text.Json` serializa:
+`NEXUS_WindowsForms/Models/MissionResult.cs` representa el resultado en memoria:
 
-| Propiedad | Tipo | Uso |
+| Propiedad | Tipo | Uso actual |
 |---|---|---|
-| `Id` | `Guid` | Identificador único del resultado; se inicializa con `Guid.NewGuid()`. El almacén lo usa para evitar duplicados. |
-| `MissionName` | `string` | Nombre de la misión finalizada. |
-| `CompletedAt` | `DateTime` | Fecha y hora local de finalización (`DateTime.Now`). |
-| `Outcome` | `string` | Etiqueta del desenlace. |
-| `Summary` | `string` | Texto que resume el desenlace. |
-| `Score` | `int` | Suma de oxígeno, integridad del casco y datos recuperados al finalizar. |
-| `OxygenRemaining` | `int` | Oxígeno final, limitado entre 0 y 100. |
-| `HullIntegrity` | `int` | Integridad final del casco, limitada entre 0 y 100. |
-| `DataRecovered` | `int` | Datos finales recuperados, limitados entre 0 y 100. |
-| `Decisions` | `List<string>` | Títulos de las opciones elegidas durante la misión. |
+| `Id` | `Guid` | Identifica la copia JSON local; no es la clave primaria de `BitacoraMisiones`. |
+| `MissionName` | `string` | Nombre de la misión. |
+| `CompletedAt` | `DateTime` | Fecha y hora de finalización. |
+| `Outcome` | `string` | Desenlace calculado por `MissionGame`. |
+| `Summary` | `string` | Descripción textual del desenlace. |
+| `Score` | `int` | Puntuación total calculada al finalizar. |
+| `OxygenRemaining` | `int` | Oxígeno final. |
+| `HullIntegrity` | `int` | Integridad final del casco. |
+| `DataRecovered` | `int` | Datos finales recuperados. |
+| `Decisions` | `List<string>` | Opciones elegidas durante la misión. |
 
-Ejemplo representativo de un elemento JSON (los valores dependen de la partida):
+En SQL, `BitacoraMisiones.IdBitacora` es una clave `INT IDENTITY`; el GUID de `MissionResult` no se copia a esa columna. Las decisiones se guardan en `DecisionesExpedicion` y se consultan asociadas al ID de expedición cuando existe.
 
-```json
-{
-  "Id": "71c8d267-4f44-4a28-8be1-3374d315da40",
-  "MissionName": "Operación Umbral de Eos",
-  "CompletedAt": "2026-11-18T12:00:00",
-  "Outcome": "RECOLECCIÓN EXITOSA",
-  "Summary": "Resumen del desenlace.",
-  "Score": 264,
-  "OxygenRemaining": 83,
-  "HullIntegrity": 95,
-  "DataRecovered": 86,
-  "Decisions": ["INICIAR EXPLORACIÓN", "ESCANEAR DESDE ÓRBITA"]
-}
-```
+## Estado serializado de exploración
 
-El identificador del ejemplo es ilustrativo; en ejecución se genera un GUID nuevo. El archivo contiene una lista JSON de resultados, no un objeto individual.
+`ExplorationSaveState` se serializa con `System.Text.Json` y se almacena en `EstadoNave.EstadoExploracionJson`. Sus campos incluyen:
 
-## Flujo de guardado y consulta
+- Posición del jugador (`PlayerX`, `PlayerY`).
+- Objetos recogidos/usados, documentos leídos y secretos encontrados.
+- Habitaciones exploradas, puertas desbloqueadas y objetivos completados.
+- Diálogos vistos/en curso y decisiones narrativas.
+- Eventos disparados/activos/completados, relojes de eventos y desafíos completados/en curso.
+- Posición, salud, alerta y estado de eliminación de enemigos.
 
-1. `MissionGame` crea un resultado cuando se toma una decisión final.
-2. `FormMision` asigna `LastResult` y emite el evento `MissionCompleted`.
-3. `NexusApplicationContext` entrega el resultado a `MissionHistoryStore.TrySave`.
-4. El almacén lee la lista existente, comprueba si ya existe el mismo `Id`, añade el resultado, crea el directorio si hace falta y escribe JSON indentado en un archivo temporal antes de reemplazar el archivo de destino.
-5. Si la lectura o escritura falla, el almacén devuelve un mensaje de error y el contexto lo presenta en un cuadro de diálogo.
-6. Al abrir el formulario de registros, `FormRegistros` vuelve a cargar el archivo y muestra fecha, desenlace, puntuación y detalles del resultado.
+Los recursos principales (oxígeno, integridad y datos), la etapa de la expedición y algunas banderas narrativas se guardan en columnas SQL aparte. Al cargar, `FormMision` restaura los campos de SQL y deserializa el estado JSON. Si el JSON de exploración no se puede leer, el formulario avisa e inicia esa parte del mapa con un estado nuevo.
 
-Los errores al cargar se muestran en el formulario. Si el archivo todavía no existe o está vacío, la aplicación muestra el estado de historial vacío. La lectura descarta entradas nulas y, en memoria, elimina IDs repetidos; asigna un ID a resultados antiguos que tengan `Guid.Empty` y ordena por fecha descendente. La escritura se evita para resultados cuyo `Id` ya está guardado.
+## Flujo de guardado y carga de partida
 
-## Ubicación
+1. El jugador puede guardar con **GUARDAR PARTIDA**; la actividad programa un guardado automático cuando transcurren 1,2 segundos sin nuevos cambios.
+2. `FormMision` llama `DatabaseService.GuardarExpedicionEnCurso` con la etapa, recursos, decisiones y JSON del mapa.
+3. `DatabaseService` crea o actualiza `Expediciones` y `EstadoNave`, sincroniza `DecisionesExpedicion` y confirma la operación con una transacción.
+4. **CARGAR PARTIDA** lista expediciones `EnCurso` de SQL Server.
+5. La selección restaura recursos, decisiones, etapa y estado de exploración.
 
-El almacén usa `Environment.SpecialFolder.LocalApplicationData` y construye la ruta:
+## Historial de misiones completadas
+
+Al terminar, `DatabaseService.GuardarResultadoMision` inserta el resultado en `BitacoraMisiones` y, si hay ID de expedición, marca esa expedición como completada. `FormRegistros` obtiene el historial mediante `DatabaseService.ObtenerHistorialMisiones`; por ello, necesita conexión SQL para mostrar registros.
+
+El evento `MissionCompleted` también entrega el `MissionResult` a `MissionHistoryStore`, que escribe una copia local JSON en:
 
 ```text
 %LOCALAPPDATA%\NEXUS\mission-history.json
 ```
 
-La ruta efectiva depende del perfil de Windows con el que se ejecuta la aplicación. Los datos no se sincronizan entre equipos ni se guardan dentro del repositorio.
+El formulario `FormRegistros` no usa actualmente ese archivo como fuente de historial. SQL Server es la fuente que muestra la interfaz de registros. Si falla la escritura SQL al finalizar, puede quedar la copia JSON local sin que el resultado aparezca en la pantalla de registros.
 
-## Alcance y limitaciones
+## Configuración y preparación de base
 
-- Se guardan resultados terminados, no el estado de una misión en curso.
-- No hay perfiles de jugador, identificador de partida, inventario ni progreso reanudable en este JSON.
-- El identificador deduplica una misma instancia de resultado; repetir la misión crea otro resultado con otro `Id`.
-- El bloqueo implementado coordina operaciones sobre la instancia del almacén utilizada por la aplicación; no se documenta como bloqueo entre procesos.
-- SQL Server, ADO.NET y Entity Framework Core no están implementados ni configurados en los proyectos actuales.
+La conexión se obtiene primero de la variable de entorno `NEXUS_SQL_CONNECTION_STRING`. Si no está definida, el código usa `localhost\SQLEXPRESS` con la base `NexusDB` y autenticación integrada de Windows. Si el servidor o la instancia tienen otro nombre, configura la variable con el destino correcto y concede permisos a la cuenta que ejecutará la aplicación.
 
-## Modelo SQL anterior
+Para inicializar una base nueva, se ejecutan los scripts en orden: `database/01_CreateDatabase.sql` y después `database/02_AddExplorationSave.sql`. **El primer script elimina y recrea tablas si ya existen; no debe ejecutarse sobre una base con datos que se quieran conservar.** La cuenta de SQL necesita permisos de creación y alteración durante la instalación/migración, y permisos de lectura/escritura para el uso normal.
 
-El antiguo esquema relacional de Jugador, Partida, EstadoCadete, ProgresoMision, Inventario y zonas puede servir como idea futura para guardar partidas completas. No debe interpretarse como una base creada, un requisito de ejecución o una característica disponible en NEXUS hoy.
+## Límites y compatibilidad
+
+- Las partidas se guardan en SQL Server; no se guardan dentro del repositorio.
+- La copia local JSON de resultados y el historial SQL son dos persistencias distintas; el formulario de registros consulta únicamente SQL.
+- Partidas antiguas sin `EstadoExploracionJson` reciben la columna nullable, y al cargarse pueden inicializar el estado de mapa con valores predeterminados.
+- La migración añade una columna, no recrea las tablas ni borra los registros existentes.
